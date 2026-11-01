@@ -18,6 +18,10 @@ jobs:
         with:
           node-version: 24
       - run: corepack enable
+      - name: Resolve from the public npm registry
+        # yarn.lock is generated through a private npm mirror; drop its archive URLs so the runner
+        # fetches the same packages (same checksums) from registry.npmjs.org
+        run: sed -i '' -E 's/::__archiveUrl=[^"]*//; s/%3A%3A__archiveUrl=[^#"]*//g' yarn.lock
       - run: yarn install --immutable
       - name: Tag matches package.json
         run: |
