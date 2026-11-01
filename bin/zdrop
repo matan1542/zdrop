@@ -20,6 +20,9 @@ node="$root/runtime/node"
 node_flags="--max-semi-space-size=1 --optimize-for-size --max-old-space-size=96"
 home=${ZDROP_HOME:-$HOME/.cache/zdrop}
 repo="matan1542/zdrop"
+# installed by Homebrew: brew owns updates and removal
+brewed=0
+case "$root" in */Cellar/zdrop/*) brewed=1 ;; esac
 
 case "${1:-}" in
   start)
@@ -33,6 +36,7 @@ case "${1:-}" in
     cat "$root/VERSION" 2>/dev/null || "$node" -p "require('$root/package.json').version + ' (source)'"
     ;;
   update)
+    [ $brewed = 1 ] && { echo "installed with Homebrew: brew upgrade zdrop"; exit 0; }
     shift
     curl -fsSL "https://github.com/$repo/releases/latest/download/install.sh" | ZDROP_VERSION="${1:-latest}" sh
     ;;
@@ -52,6 +56,7 @@ case "${1:-}" in
     echo "aws, gcloud and az specs installed. Turn them on with: export ZDROP_HEAVY_SPECS=1 (in ~/.zshrc, before zdrop)"
     ;;
   uninstall)
+    [ $brewed = 1 ] && { echo "installed with Homebrew: brew uninstall zdrop, then remove the zdrop line from ~/.zshrc"; exit 0; }
     prefix=${ZDROP_PREFIX:-$HOME/.zdrop}
     "$node" $node_flags "$root/dist/src/cli.js" stop >/dev/null 2>&1 || true
     zshrc="${ZDOTDIR:-$HOME}/.zshrc"

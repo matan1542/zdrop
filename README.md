@@ -46,6 +46,17 @@ zdrop uninstall          # removes ~/.zdrop, the ~/.zshrc line and the cache
 zdrop version
 ```
 
+### With Homebrew
+
+```sh
+brew install matan1542/tap/zdrop
+```
+
+Then add the line Homebrew prints to the end of `~/.zshrc`:
+`source "$(brew --prefix)/opt/zdrop/libexec/zsh/zdrop.plugin.zsh"`. Update with `brew upgrade zdrop`.
+
+### Installer options
+
 Installer options: `ZDROP_VERSION=0.2.0` installs a specific release, `ZDROP_PREFIX=<dir>` sets the
 install directory, and `ZDROP_NO_RC=1` leaves `~/.zshrc` alone.
 
