@@ -10,6 +10,8 @@ import type { QueryResult } from "./engine.js";
 //   A US name US value ...          replace the alias table
 //   E US PATH US HISTFILE           the shell's environment (sent on connect and when PATH changes);
 //                                   commands are resolved and learned against this PATH
+//   H US line                       a command line the user just ran (ranks suggestions by usage)
+//   D US dir                        the shell changed into dir (frecent directories for cd)
 //   N                               a new command line started (drops implicit generator caches)
 //   S                               status (JSON reply, for `zdrop status`)
 //   X                               stop the daemon

@@ -121,6 +121,24 @@ bin/zdrop why ghidraRun                   # where a command's completions come f
 bin/zdrop forget claude                   # drop what was learned (relearned on next use); --all for everything
 ```
 
+## Ranking
+
+Suggestions follow what you actually do.
+- **History:** zdrop reads the end of your `$HISTFILE` (the last 1 MB) when the daemon starts, and then
+  learns every command you run.
+  - Within prefix matches, the subcommands, flags and first words you use most come first (`git ch` →
+    `cherry-pick` if that's your habit). Recent use counts more, with a 30-day half-life.
+  - Values you typed before are offered again where the spec has none, marked `↺` (`kubectl -n` →
+    `prod`, `git commit -m` → earlier messages). Values of password, token, secret, key and auth flags
+    are never offered.
+  - Pinned suggestions (like the current branch) stay on top.
+- **Directories:** `cd`, `pushd` and `z` also offer the directories you visit most often and most
+  recently (zoxide's algorithm), marked `⌂`.
+  - With nothing typed, the top three come first. Once you type, the matching ones follow the children.
+  - Stored in `~/.cache/zdrop/dirs.tsv` (at most 1,000 directories).
+- **Memory:** everything is in memory and capped at 2,000 contexts and 15,000 entries. Your real history
+  costs about 2 MB. A deliberately adversarial 60,000-line history settles at +6 MB.
+
 ## Learned commands
 
 Commands without a Fig spec are learned automatically. There is no per-tool configuration.

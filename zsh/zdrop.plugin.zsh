@@ -25,6 +25,7 @@ typeset -gF _zdrop_started_at=0
 typeset -g  _zdrop_sent_path=""           # PATH last sent to the daemon (commands are learned against it)
 typeset -g  _zdrop_ghost="" _zdrop_ghost_hl="" _zdrop_ghost_saved=""  # inline preview after the cursor
 typeset -gi _zdrop_dirty=0                # the next idle repaint must draw (a new result arrived)
+typeset -ga _zdrop_visited=()             # directories changed into while running a command (sent at the next prompt)
 # what is on screen
 typeset -g  _zdrop_state=hidden          # visible | hidden | dismissed (Esc: stays hidden until a new token)
 typeset -ga _zdrop_items=()
@@ -170,6 +171,9 @@ _zdrop_line_init() {
   _zdrop_measure_prompt
   _zdrop_connect || return
   [[ $PATH == $_zdrop_sent_path ]] || _zdrop_send_env
+  local dir
+  for dir in $_zdrop_visited; do _zdrop_write "D$_zdrop_US$dir"; done
+  _zdrop_visited=()
   _zdrop_write "N"
 }
 
@@ -270,6 +274,8 @@ _zdrop_hide() {
 
 _zdrop_preexec() {
   _zdrop_sync_end
+  # what the user runs ranks future suggestions
+  (( _zdrop_fd )) && _zdrop_write "H$_zdrop_US${1//[$'\n\x1e\x1f']/ }"
   # commands must not inherit the socket; reconnect at the next prompt
   _zdrop_disconnect
 }
@@ -495,4 +501,6 @@ add-zle-hook-widget line-init _zdrop_line_init
 add-zle-hook-widget line-finish _zdrop_line_finish
 add-zle-hook-widget line-pre-redraw _zdrop_pre_redraw
 add-zsh-hook preexec _zdrop_preexec
+_zdrop_chpwd() { (( ${#_zdrop_visited} < 32 )) && _zdrop_visited+=("$PWD") }
+add-zsh-hook chpwd _zdrop_chpwd
 add-zsh-hook precmd _zdrop_bind_keys

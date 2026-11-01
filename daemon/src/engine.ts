@@ -3,7 +3,11 @@ import fuzzysort from "fuzzysort";
 import { getSuggestions } from "../vendor/inshellisense/runtime/runtime.js";
 import { generationMode } from "../vendor/inshellisense/runtime/generatorCache.js";
 import type { Suggestion, SuggestionBlob } from "../vendor/inshellisense/runtime/model.js";
+import { aliasExpand } from "../vendor/inshellisense/runtime/alias.js";
+import { parseCommand, type CommandToken } from "../vendor/inshellisense/runtime/parser.js";
 import { Shell } from "../vendor/inshellisense/utils/shell.js";
+import { dirs, tildify } from "./rank/dirs.js";
+import { usage } from "./rank/usage.js";
 
 export const maxItems = 50;
 
@@ -73,10 +77,79 @@ const commonPrefix = (names: string[]): string => {
   return prefix;
 };
 
-const toResult = (blob: SuggestionBlob | undefined, pending: string[]): QueryResult => {
-  if (blob == null) return { items: [], replaceLen: 0, commonPrefix: "", argHint: "", pending };
-  const term = queryTerm(blob);
-  const items: Item[] = blob.suggestions.slice(0, maxItems).map((s) => ({
+/** What the line looks like around the cursor, for ranking by usage and directory frecency. */
+type LineContext = { before: string[]; active?: CommandToken; cwd: string };
+
+const lineContext = (lbuffer: string, cwd: string): LineContext => {
+  const tokens = aliasExpand(parseCommand(lbuffer, Shell.Zsh));
+  const active = tokens.at(-1)?.complete === false ? tokens.at(-1) : undefined;
+  return { before: (active ? tokens.slice(0, -1) : tokens).map((t) => t.token), active, cwd };
+};
+
+const escapeZsh = (value: string): string => value.replace(zshSpecial, "\\$1");
+const quoteValue = (value: string): string => (escapeZsh(value) === value ? value : value.includes("'") ? escapeZsh(value) : `'${value}'`);
+
+const cdCommands = new Set(["cd", "pushd", "z"]);
+
+/** Pinned suggestions (Fig priority > 75, e.g. the current branch) stay on top; then prefix matches by usage. */
+const rankItems = (items: Item[], priorities: number[], ctx: LineContext, term: string): Item[] => {
+  const lower = term.toLowerCase();
+  return items
+    .map((item, index) => ({
+      item,
+      index,
+      group: (priorities[index] ?? 50) > 75 ? 0 : lower === "" || item.name.toLowerCase().startsWith(lower) ? 1 : 2,
+      score: usage.score(ctx.before, item.name),
+    }))
+    .sort((a, b) => a.group - b.group || b.score - a.score || a.index - b.index)
+    .map((r) => r.item);
+};
+
+/** Values used before in this position (flag values, positional words) that the spec didn't offer. */
+const historyItems = (items: Item[], ctx: LineContext, term: string): Item[] => {
+  if (ctx.before.length === 0 || term.startsWith("-") || cdCommands.has(ctx.before[0])) return [];
+  const known = new Set(items.map((item) => item.name));
+  return usage
+    .values(ctx.before, term, 5)
+    .filter((hit) => !known.has(hit.name))
+    .map((hit) => ({
+      icon: "history",
+      name: hit.name,
+      insert: quoteValue(hit.name) + " ",
+      description: `used ${hit.count}×`,
+      args: "",
+      matchIndices: matchIndices(hit.name, term),
+      type: "history",
+    }));
+};
+
+/** Frecent directories for `cd`: the top ones before anything is typed, matching ones after. */
+const dirItems = (items: Item[], ctx: LineContext, term: string): { first: Item[]; last: Item[] } => {
+  if (ctx.before.length !== 1 || !cdCommands.has(ctx.before[0]) || term.includes("/")) return { first: [], last: [] };
+  const listed = new Set(items.map((item) => path.resolve(ctx.cwd, item.insert.replace(/\\(.)/g, "$1"))));
+  const hits = dirs.top(term ? 5 : 3, term, (dir) => dir === ctx.cwd || listed.has(dir) || listed.has(dir + "/"));
+  const toItem = (dir: string): Item => {
+    const full = tildify(dir) + "/";
+    // long paths show their last segments; the description has the whole path
+    const parts = full.split("/").filter(Boolean);
+    const name = full.length <= 28 ? full : "…/" + parts.slice(-2).join("/") + "/";
+    return {
+      icon: "frecent",
+      name,
+      insert: full.startsWith("~") ? "~" + escapeZsh(full.slice(1)) : escapeZsh(full),
+      description: full,
+      args: "",
+      matchIndices: matchIndices(name, term),
+      type: "folder",
+    };
+  };
+  return term ? { first: [], last: hits.map((h) => toItem(h.dir)) } : { first: hits.map((h) => toItem(h.dir)), last: [] };
+};
+
+const toResult = (blob: SuggestionBlob | undefined, pending: string[], ctx: LineContext): QueryResult => {
+  const term = blob ? queryTerm(blob) : (ctx.active?.token ?? "");
+  const suggestions = blob?.suggestions.slice(0, maxItems) ?? [];
+  const specItems: Item[] = suggestions.map((s) => ({
     icon: s.icon,
     name: s.name,
     insert: insertText(s),
@@ -85,13 +158,19 @@ const toResult = (blob: SuggestionBlob | undefined, pending: string[]): QueryRes
     matchIndices: matchIndices(s.name, term),
     type: s.type ?? "",
   }));
+  const priorities = suggestions.map((s) => s.priority ?? 50);
+  const history = historyItems(specItems, ctx, term);
+  const ranked = rankItems([...specItems, ...history], [...priorities, ...history.map(() => 50)], ctx, term);
+  const frecent = dirItems(ranked, ctx, term);
+  const items = [...frecent.first, ...ranked, ...frecent.last].slice(0, maxItems);
+  if (items.length === 0 && blob == null) return { items: [], replaceLen: 0, commonPrefix: "", argHint: "", pending };
 
   const prefix = commonPrefix(items.map((item) => item.name));
   return {
     items,
-    replaceLen: rawTokenLength(blob),
+    replaceLen: blob ? rawTokenLength(blob) : (ctx.active?.tokenLength ?? 0),
     commonPrefix: prefix.toLowerCase().startsWith(term.toLowerCase()) ? prefix : "",
-    argHint: blob.argumentDescription ?? "",
+    argHint: blob?.argumentDescription ?? "",
     pending,
   };
 };
@@ -113,18 +192,19 @@ export const runQuery = async (
   emit: (result: QueryResult) => void,
   signal?: AbortSignal,
 ): Promise<void> => {
+  const line = lineContext(lbuffer, cwd);
   const context = { fast: true, pending: [] as Promise<unknown>[], labels: [] as string[] };
   const fast = await generationMode.run(context, () => getSuggestions(lbuffer, cwd, Shell.Zsh, signal));
   signal?.throwIfAborted();
   if (context.pending.length === 0) {
-    emit(toResult(fast, []));
+    emit(toResult(fast, [], line));
     return;
   }
 
-  emit(toResult(fast, [pendingLabel(fast, context.labels)]));
+  emit(toResult(fast, [pendingLabel(fast, context.labels)], line));
   await Promise.all(context.pending);
   signal?.throwIfAborted();
   const full = await getSuggestions(lbuffer, cwd, Shell.Zsh, signal);
   signal?.throwIfAborted();
-  emit(toResult(full, []));
+  emit(toResult(full, [], line));
 };

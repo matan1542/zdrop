@@ -95,12 +95,13 @@ _zdrop_load_icons() {
         auto-execute $'' shortcut $'' special $'' mixin $'' default $''
         fig:git $'' fig:commit $'' fig:npm $'' fig:yarn $'' fig:node $''
         fig:docker $'' fig:kubernetes $'' fig:aws $'' fig:github $''
+        history $'\uf1da' frecent $'\uf07c'
       ) ;;
     none) ;;
     *)
       _zdrop_glyph=(
         subcommand '›' option '⚑' arg '◇' file '≡' folder '▸' auto-execute '↪'
-        shortcut '★' special '★' mixin '◆' default '•'
+        shortcut '★' special '★' mixin '◆' default '•' history '↺' frecent '⌂'
         fig:git '⎇' fig:commit '⎇' fig:npm '⬢' fig:yarn '⬢' fig:node '⬢'
       ) ;;
   esac

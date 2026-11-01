@@ -10,6 +10,8 @@ import { initRuntime } from "./setup.js";
 import { BackgroundBuilder } from "./learn/builder.js";
 import { learnConfig } from "./learn/config.js";
 import { requestEnv, type ShellEnv } from "./learn/context.js";
+import { dirs } from "./rank/dirs.js";
+import { usage } from "./rank/usage.js";
 
 const progressIntervalMs = 100;
 
@@ -53,6 +55,7 @@ export const serve = async (): Promise<void> => {
   const shutdown = (reason: string) => {
     log.debug({ msg: "shutting down", reason });
     builder.stop();
+    dirs.flush();
     killAllChildren();
     learner?.dispose();
     server.close();
@@ -78,6 +81,8 @@ export const serve = async (): Promise<void> => {
       generatorCache: { ...getGeneratorCacheStats(), budget: limits.generatorCacheSuggestions },
       children: { running: liveChildren.size, slotsInUse: childSlots.inUse, queued: childSlots.queued, max: limits.maxConcurrentChildren },
       learn: learner == null ? { enabled: false } : { ...learner.stats(), background: builder.stats() },
+      usage: usage.stats(),
+      dirs: dirs.stats(),
     };
   };
 
@@ -136,8 +141,15 @@ export const serve = async (): Promise<void> => {
       case "E": {
         session.env = { path: fields[0] || process.env.PATH || "/usr/bin:/bin", histfile: fields[1] || undefined };
         builder.setEnv(session.env);
+        void usage.loadHistory(session.env.histfile).catch(() => undefined);
         break;
       }
+      case "H":
+        usage.record(fields.join(US));
+        break;
+      case "D":
+        if (fields[0]) dirs.visit(fields[0]);
+        break;
       case "N":
         clearImplicitGeneratorState();
         break;

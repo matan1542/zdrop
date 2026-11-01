@@ -14,7 +14,7 @@ trap cleanup EXIT
 
 # fixture project: package.json scripts, folders, a git repo with branches
 app="$work/app"
-mkdir -p "$app/src" "$app/docs" "$work/zdot" "$work/home"
+mkdir -p "$app/src" "$app/docs" "$app/deep/inner" "$work/zdot" "$work/home"
 printf '{ "name": "app", "scripts": { "build": "tsc", "build:watch": "tsc -w", "test": "vitest" } }\n' >"$app/package.json"
 (cd "$app" && git init -q -b main && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init && git branch feature/login)
 
@@ -90,6 +90,10 @@ text "i "; sleep 1;       check "a CLI without a spec is learned from --help" "â
 send Down;                check "learned subcommands carry descriptions" "Deploy a target"
 send C-u; text "fakecli deploy --"; sleep 1
                           check "learned subcommand flags" "--dry-run"
+# history and frecency come from what the shell actually runs
+send C-u; text "git cherry-pick --abort 2>/dev/null; cd deep/inner; cd ../.."; send Enter; sleep 0.5
+text "git ch";            check "what you ran ranks first (ghost shows it)" '^\$ git cherry-pick'
+send C-u; text "cd ";     check "cd offers a frecent directory" "âŒ‚ .*deep/inner/"
 send C-u; text "echo e2e-ran"; send Enter
                           check "Enter runs a command when nothing is selected" "^e2e-ran"
 
