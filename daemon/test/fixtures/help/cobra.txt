@@ -1,0 +1,23 @@
+kubectl controls the Kubernetes cluster manager.
+
+ Find more information at: https://kubernetes.io/docs/reference/kubectl/
+
+Usage:
+  kubectl [flags]
+  kubectl [command]
+
+Available Commands:
+  apply       Apply a configuration to a resource by file name or stdin
+  get         Display one or many resources
+  logs        Print the logs for a container in a pod
+  completion  Output shell completion code for the specified shell (bash, zsh, fish, or powershell)
+
+Flags:
+      --as string                      Username to impersonate for the operation
+      --cache-dir string               Default cache directory (default "/home/user/.kube/cache")
+  -n, --namespace string               If present, the namespace scope for this CLI request
+      --request-timeout duration       The length of time to wait before giving up on a single server request
+  -v, --v Level                        number for the log level verbosity
+  -h, --help                           help for kubectl
+
+Use "kubectl [command] --help" for more information about a command.

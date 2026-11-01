@@ -1,0 +1,14 @@
+Usage: tool [OPTIONS] COMMAND [ARGS]...
+
+  A tool that does things.
+
+Options:
+  --debug / --no-debug  Enable debug output.
+  -o, --output PATH     Where to write results.
+  --format [json|yaml|text|csv]
+                        Output format.
+  --help                Show this message and exit.
+
+Commands:
+  init     Create a new project.
+  publish  Publish the project to the registry.

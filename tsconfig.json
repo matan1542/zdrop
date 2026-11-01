@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "rootDir": "daemon",
+    "types": ["node", "@withfig/autocomplete-types"],
+    "sourceMap": false
+  },
+  "include": ["daemon/src/**/*", "daemon/vendor/**/*"],
+  "exclude": ["daemon/**/*.test.ts"]
+}

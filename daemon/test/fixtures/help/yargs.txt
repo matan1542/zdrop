@@ -1,0 +1,12 @@
+mycli <command>
+
+Commands:
+  mycli serve [port]   start the server                         [aliases: s]
+  mycli build <entry>  build the project from an entry file
+  mycli lint [files..]  lint source files
+
+Options:
+      --version  Show version number                                   [boolean]
+  -c, --config   Path to a config file                                  [string]
+      --mode     Build mode           [string] [choices: "development", "production"] [default: "development"]
+  -h, --help     Show help                                             [boolean]

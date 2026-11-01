@@ -1,0 +1,16 @@
+usage: pkgtool [-h] [-v] [--root DIR] {install,remove,list} ...
+
+Manage packages.
+
+positional arguments:
+  {install,remove,list}
+    install             Install a package
+    remove              Remove a package
+    list                List installed packages
+
+options:
+  -h, --help            show this help message and exit
+  -v, --verbose         more output
+  --root DIR            installation root
+  --color {auto,always,never}
+                        when to use colors
