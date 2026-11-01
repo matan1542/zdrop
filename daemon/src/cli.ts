@@ -10,6 +10,7 @@ const usage = `usage:
   zdrop why <command>                          where a command's completions come from, and why
   zdrop forget <command>|--all                 drop learned completions (relearned on next use)
   zdrop doctor                                 check the setup, with a fix for each problem
+  zdrop extras install                         download the aws, gcloud and az specs (release installs)
   zdrop version | update [version] | uninstall`;
 
 const main = async (argv: string[]) => {

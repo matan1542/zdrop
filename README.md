@@ -31,7 +31,7 @@ curl -fsSL https://github.com/matan1542/zdrop/releases/latest/download/install.s
 ```
 
 Then open a new terminal tab (run `zdrop doctor` if the popup doesn't show). The installer:
-- downloads the release for your Mac and verifies its SHA-256 checksum
+- downloads the release for your Mac (about 25 MB) and verifies its SHA-256 checksum
 - installs into `~/.zdrop`. The release bundles its own Node.js, so nothing else is needed and nvm or
   fnm version switching can't break it.
 - adds one `source` line to the end of `~/.zshrc` (backing it up first), and comments out an older
@@ -40,6 +40,7 @@ Then open a new terminal tab (run `zdrop doctor` if the popup doesn't show). The
 
 ```sh
 zdrop doctor             # checks the setup, with a fix for each problem
+zdrop extras install     # the full aws, gcloud and az specs (then set ZDROP_HEAVY_SPECS=1)
 zdrop update             # latest release (or: zdrop update 0.2.0)
 zdrop uninstall          # removes ~/.zdrop, the ~/.zshrc line and the cache
 zdrop version
@@ -102,7 +103,7 @@ Set these before sourcing the plugin. Variables marked "daemon" take effect when
 | `ZDROP_UPDATE_CHECK` | `1` | daemon: `0` never checks GitHub for a newer release (otherwise at most weekly; a newer one is mentioned once per shell in the description bar) |
 | `ZDROP_DISABLE` | `0` | `1` skips loading the plugin |
 | `ZDROP_SPEC_PATH` | | daemon: extra spec directories (colon-separated), searched first |
-| `ZDROP_HEAVY_SPECS` | `0` | daemon: `1` enables the aws, gcloud and az specs (82% of all spec bytes) |
+| `ZDROP_HEAVY_SPECS` | `0` | daemon: `1` uses the full aws, gcloud and az Fig specs (82% of all spec bytes; releases need `zdrop extras install`). Off, those tools are learned from their help like any other |
 | `ZDROP_RSS_LIMIT_MB` | `120` | daemon: restart when resident memory passes this |
 | `ZDROP_SPEC_CACHE_MB` | `24` | daemon: estimated heap for loaded specs |
 | `ZDROP_IDLE_MINUTES` | `30` | daemon: exit after this long with no shell connected |
@@ -269,7 +270,7 @@ yarn build && yarn test     # unit tests: engine fixtures, memory budgets, proce
 yarn e2e                    # drives a real zsh in a private tmux server
 yarn soak                   # 50k-keystroke memory/latency soak
 yarn budget                 # background-learning resource budget (RSS, probes, freezing while typing)
-scripts/package.sh          # release tarballs into release/ (bundles Node.js for arm64 and x64)
+scripts/package.sh          # release tarballs (.tar.xz) into release/: bundled Node.js for arm64 and x64, plus the heavy specs
 ```
 
 Releasing: bump `version` in `package.json`, commit, then push a matching tag (`git tag v0.2.0 && git push

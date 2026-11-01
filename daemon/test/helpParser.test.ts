@@ -138,6 +138,14 @@ describe("help parser: library formats", () => {
     expect(opt(node.options, "--root")?.arg).toMatchObject({ name: "DIR", template: "folders" });
   });
 
+  it("reStructuredText rendered as a man page (aws help)", () => {
+    const text = `AWS()\n\nNAME\n       aws -\n\nGLOBAL OPTIONS\n       --debug (boolean)\n\n       Turn on debug logging.\n\n       --endpoint-url (string)\n\n       Override the URL.\n\nAVAILABLE SERVICES\n       o accessanalyzer\n\n       o s3\n`;
+    const node = parseHelp(text, ["aws"]);
+    expect(node.subcommands.map((c) => c.names[0])).toEqual(["accessanalyzer", "s3"]);
+    expect(opt(node.options, "--debug")?.arg).toBeUndefined();
+    expect(opt(node.options, "--endpoint-url")?.arg?.name).toBe("string");
+  });
+
   it("rejects output that is not help", () => {
     expect(looksLikeHelp(parse("notahelp.txt", "x"))).toBe(false);
     expect(looksLikeHelp(parseHelp("", ["x"]))).toBe(false);

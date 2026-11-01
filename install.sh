@@ -38,23 +38,24 @@ else
   if [ "$version" = latest ]; then
     base="https://github.com/$repo/releases/latest/download"
     # resolve "latest" to a version number to name the asset
-    version=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$repo/releases/latest" | sed 's|.*/tag/v||')
+    version=$(curl -fsSLI --retry 3 --connect-timeout 15 -o /dev/null -w '%{url_effective}' "https://github.com/$repo/releases/latest" | sed 's|.*/tag/v||')
     [ -n "$version" ] || die "could not find the latest release"
   else
     version=${version#v}
     base="https://github.com/$repo/releases/download/v$version"
   fi
-  asset="zdrop-$version-darwin-$arch.tar.gz"
+  asset="zdrop-$version-darwin-$arch.tar.xz"
   say "Downloading zdrop $version ($arch)"
-  curl -fL --progress-bar "$base/$asset" -o "$tmp/$asset" || die "download failed: $base/$asset"
-  curl -fsSL "$base/$asset.sha256" -o "$tmp/$asset.sha256" || die "checksum download failed"
+  # retries cover a dropped connection to GitHub's release CDN
+  curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 --progress-bar "$base/$asset" -o "$tmp/$asset" || die "download failed: $base/$asset"
+  curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 "$base/$asset.sha256" -o "$tmp/$asset.sha256" || die "checksum download failed"
   (cd "$tmp" && shasum -a 256 -c "$asset.sha256" >/dev/null) || die "checksum mismatch: refusing to install"
   tarball="$tmp/$asset"
 fi
 
 say "Installing into $prefix"
 mkdir -p "$prefix/versions"
-tar -xzf "$tarball" -C "$tmp"
+tar -xf "$tarball" -C "$tmp"   # .tar.xz (or .tar.gz for releases before 0.2.0)
 src=$(find "$tmp" -maxdepth 1 -type d -name 'zdrop-*' | head -1)
 [ -n "$src" ] || die "unexpected tarball layout"
 installed_version=$(cat "$src/VERSION")

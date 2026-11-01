@@ -37,8 +37,12 @@ const run = async (argv: string[], options: ProbeOptions, sandboxed: boolean) =>
 export const probeHelp = async (file: string, programPath: string[], options: ProbeOptions): Promise<ProbeOutcome> => {
   const started = Date.now();
   const words = programPath.slice(1);
+  // `--help` first; `-h` or `help <sub>`; and `<sub> help` for tools that only document themselves
+  // that way (aws), tried only when the program's own output points at it
   const attempts = words.length === 0 ? [["--help"], ["-h"]] : [[...words, "--help"], ["help", ...words]];
+  const helpWord = new RegExp(`\\b${programPath[0].replace(/[^\w-]/g, "")}( <[^>]+>)* help\\b`);
   let timedOut = false;
+  let best: { node: HelpNode; text: string; size: number } | undefined;
   for (const attempt of attempts) {
     options.signal?.throwIfAborted();
     const result = await run([file, ...attempt], options, true);
@@ -48,12 +52,18 @@ export const probeHelp = async (file: string, programPath: string[], options: Pr
       break;
     }
     const text = result.stdout + "\n" + result.stderr;
+    if (helpWord.test(text) && !attempts.some((a) => a.at(-1) === "help" && a.length === words.length + 1)) attempts.push([...words, "help"]);
     const node = parseHelp(text, programPath);
-    if (looksLikeHelp(node)) {
-      // a root command built on cobra/click/yargs can also answer for live values
-      const protocol = words.length === 0 ? await detectProtocol(file, programPath[0], text, options).catch(() => undefined) : undefined;
-      return { status: "ok", source: "help", node, ms: Date.now() - started, protocol };
-    }
+    if (!looksLikeHelp(node)) continue;
+    const size = node.subcommands.filter((c) => c.names[0] !== "help").length + node.options.length;
+    if (best == null || size > best.size) best = { node, text, size };
+    // a usage error that merely lists `help` is weak: keep trying the other forms
+    if (size >= 2) break;
+  }
+  if (best != null) {
+    // a root command built on cobra/click/yargs can also answer for live values
+    const protocol = words.length === 0 ? await detectProtocol(file, programPath[0], best.text, options).catch(() => undefined) : undefined;
+    return { status: "ok", source: "help", node: best.node, ms: Date.now() - started, protocol };
   }
   return { status: timedOut ? "timeout" : "miss", source: "help", ms: Date.now() - started };
 };

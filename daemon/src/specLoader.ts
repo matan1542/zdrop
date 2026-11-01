@@ -129,7 +129,7 @@ export class SpecLoader implements SpecProvider {
       return cached.spec;
     }
     if (cached != null) this.drop(cacheKey);
-    if (!this.allowHeavy && heavySpecs.has(name)) return;
+    // aws, gcloud and az are not Fig names unless enabled, so they are learned from --help instead
     if (!isFig) return this.loadLearned(name, cacheKey);
 
     const inFlight = this.loading.get(name);
@@ -151,7 +151,7 @@ export class SpecLoader implements SpecProvider {
   // memory lives and dies with the root entry; we only add their size to it.
   async loadPath(specPath: string, signal?: AbortSignal): Promise<Fig.Spec | undefined> {
     const root = specPath.split("/")[0];
-    if (!this.allowHeavy && heavySpecs.has(root)) return;
+    // (heavy specs that are off are not Fig names: their subcommands come from the learner)
     const isFig = this.figNames.has(root);
     const loaded = isFig ? await this.read(specPath, signal) : await this.learnedPath(specPath);
     if (loaded == null) return;

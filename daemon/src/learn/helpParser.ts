@@ -58,7 +58,7 @@ const classify = (heading: string): SectionKind => {
   if (/example|see also|environment|exit status|^files$|bugs|history|standards|authors?|copyright|notes?|learn more|feedback|report|diagnostics|compatibility|caveats|return value/.test(h))
     return "skip";
   if (/option|flag|optional arguments|switches/.test(h)) return "options";
-  if (/\b(sub)?commands?\b|\bactions?\b|\bverbs?\b/.test(h)) return "commands";
+  if (/\b(sub)?commands?\b|\bactions?\b|\bverbs?\b|\bservices\b/.test(h)) return "commands";
   if (/argument|positional|operand/.test(h)) return "args";
   return "other";
 };
@@ -238,7 +238,12 @@ const parseOptionHead = (head: string): { names: string[]; arg?: HelpArg } | und
       else if (/^-{1,2}[\w?@#][\w.:?@#-]*$/.test(name)) names.push(name);
       continue;
     }
-    if (arg == null && names.length > 0) arg = parsePlaceholder(token, true);
+    const typed = /^\((string|integer|long|double|float|list|map|structure|blob|timestamp)\)$/.exec(token);
+    if (typed && arg == null && names.length > 0) {
+      arg = { name: typed[1] };
+      continue;
+    }
+    if (arg == null && names.length > 0 && !/^\(boolean\)$/.test(token)) arg = parsePlaceholder(token, true);
   }
   return names.length > 0 ? { names: [...new Set(names)], arg } : undefined;
 };
@@ -411,6 +416,17 @@ export const parseHelp = (text: string, programPath: string[] = []): HelpNode =>
       if (option) {
         entry = option;
         sectionIndent ??= line.indent;
+      }
+      continue;
+    }
+
+    // reStructuredText bullets rendered as man pages (aws): `       o s3`
+    const bullet = kind === "commands" ? /^o\s+([a-z][\w.:-]*)$/.exec(line.text) : null;
+    if (bullet) {
+      closeEntry();
+      if (!commandNames.has(bullet[1])) {
+        commandNames.add(bullet[1]);
+        node.subcommands.push({ names: [bullet[1]], description: "", args: [], options: [] });
       }
       continue;
     }

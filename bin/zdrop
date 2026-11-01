@@ -36,6 +36,21 @@ case "${1:-}" in
     shift
     curl -fsSL "https://github.com/$repo/releases/latest/download/install.sh" | ZDROP_VERSION="${1:-latest}" sh
     ;;
+  extras)
+    # the aws, gcloud and az specs: large, so not in the main download
+    [ "${2:-}" = install ] || { echo "usage: zdrop extras install" >&2; exit 1; }
+    version=$(cat "$root/VERSION" 2>/dev/null) || { echo "zdrop extras: only for release installs (a source checkout already has them)" >&2; exit 1; }
+    asset="zdrop-heavy-specs-$version.tar.xz"
+    base="https://github.com/$repo/releases/download/v$version"
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    curl -fL --retry 3 --progress-bar "$base/$asset" -o "$tmp/$asset"
+    curl -fsSL --retry 3 "$base/$asset.sha256" -o "$tmp/$asset.sha256"
+    (cd "$tmp" && shasum -a 256 -c "$asset.sha256" >/dev/null) || { echo "checksum mismatch: not installed" >&2; exit 1; }
+    tar -xf "$tmp/$asset" -C "$root/node_modules/@withfig/autocomplete/build"
+    "$node" $node_flags "$root/dist/src/cli.js" stop >/dev/null 2>&1 || true
+    echo "aws, gcloud and az specs installed. Turn them on with: export ZDROP_HEAVY_SPECS=1 (in ~/.zshrc, before zdrop)"
+    ;;
   uninstall)
     prefix=${ZDROP_PREFIX:-$HOME/.zdrop}
     "$node" $node_flags "$root/dist/src/cli.js" stop >/dev/null 2>&1 || true
