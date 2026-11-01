@@ -86,26 +86,7 @@ const toResult = (blob: SuggestionBlob | undefined, pending: string[]): QueryRes
     type: s.type ?? "",
   }));
 
-  // Kiro's auto-execute row: Enter on it runs the line as typed. It leads the list when the typed token
-  // already matches a suggestion exactly, after a completed path (`cd src/`), and at a token boundary
-  // (`git `), so Enter keeps meaning "run" unless the user moved into the list.
-  const token = blob.activeToken;
-  const autoExecute = (name: string, description: string): Item => ({
-    icon: "auto-execute",
-    name,
-    insert: "",
-    description,
-    args: "",
-    matchIndices: [],
-    type: "auto-execute",
-  });
-  if (items.length > 0) {
-    if (token == null) items.unshift(autoExecute("Immediately execute", "Run the command as typed"));
-    else if (token.isPath && token.isPathComplete) items.unshift(autoExecute(token.token, "Enter the current directory"));
-    else if (term.length > 0 && items.some((item) => item.name === term && item.type !== "option")) items.unshift(autoExecute(term, "Run the command as typed"));
-  }
-
-  const prefix = commonPrefix(items.filter((item) => item.type !== "auto-execute").map((item) => item.name));
+  const prefix = commonPrefix(items.map((item) => item.name));
   return {
     items,
     replaceLen: rawTokenLength(blob),

@@ -23,10 +23,12 @@ typeset -g _zdrop_sock="${ZDROP_HOME:-$HOME/.cache/zdrop}/zdrop.sock"
 typeset -gi _zdrop_fd=0 _zdrop_idle_fd=0 _zdrop_seq=0
 typeset -gF _zdrop_started_at=0
 typeset -g  _zdrop_sent_path=""           # PATH last sent to the daemon (commands are learned against it)
+typeset -g  _zdrop_ghost="" _zdrop_ghost_hl="" _zdrop_ghost_saved=""  # inline preview after the cursor
+typeset -gi _zdrop_dirty=0                # the next idle repaint must draw (a new result arrived)
 # what is on screen
 typeset -g  _zdrop_state=hidden          # visible | hidden | dismissed (Esc: stays hidden until a new token)
 typeset -ga _zdrop_items=()
-typeset -gi _zdrop_sel=1 _zdrop_top=1 _zdrop_navigated=0
+typeset -gi _zdrop_sel=0 _zdrop_top=1 _zdrop_navigated=0   # sel 0: nothing selected, Enter runs the line
 typeset -gi _zdrop_replace_len=0 _zdrop_typed_len=0 _zdrop_prompt_w=0
 # cursor column of the card on screen, and of the query in flight (committed when its reply arrives,
 # so repaints before then keep the card where it is)
@@ -53,7 +55,7 @@ _zdrop_connect() {
     return 1
   fi
   _zdrop_fd=$REPLY
-  zle -F $_zdrop_fd _zdrop_on_msg
+  zle -F -w $_zdrop_fd _zdrop-on-msg
   _zdrop_alias_line
   _zdrop_write "$REPLY" || return 1
   _zdrop_send_env
@@ -110,15 +112,16 @@ _zdrop_on_msg() {
   # readable but nothing to read: the daemon closed the socket
   if (( reads == 0 )); then _zdrop_disconnect; return; fi
 
+  # This runs as a widget: zle redraws the line afterwards (which erases the card), and the
+  # pre-redraw hook arms one synchronized repaint after that, as for the arrow keys.
   if [[ -n $latest ]]; then
-    # typing often leaves the results unchanged: then the card on screen is already right
-    local before="$_zdrop_anchor$_zdrop_US$_zdrop_replace_len$_zdrop_US$_zdrop_sel$_zdrop_US$_zdrop_pending$_zdrop_US${(pj:$_zdrop_RS:)_zdrop_items}"
     _zdrop_take_result "$latest"
-    local after="$_zdrop_anchor$_zdrop_US$_zdrop_replace_len$_zdrop_US$_zdrop_sel$_zdrop_US$_zdrop_pending$_zdrop_US${(pj:$_zdrop_RS:)_zdrop_items}"
-    [[ $before == $after && -n $_zdrop_painted && -z $_zdrop_pending ]] || _zdrop_paint
+    _zdrop_dirty=1
+    _zdrop_ghost_sync
     _zdrop_keys_mode
+    _zdrop_arm_repaint
   elif (( tick )) && [[ $_zdrop_state == visible ]] && _zdrop_loading_due; then
-    _zdrop_paint
+    _zdrop_arm_repaint
   fi
 }
 
@@ -131,8 +134,8 @@ _zdrop_take_result() {
   _zdrop_replace_len=$head[3] _zdrop_prefix=$head[4] _zdrop_arghint=$head[5] _zdrop_pending=$head[6]
   _zdrop_typed_len=$_zdrop_replace_len
   _zdrop_items=("${(@)recs[2,-1]}")
-  # Kiro: selection resets to the top, unless the user had moved to an item that is still there
-  _zdrop_sel=1 _zdrop_top=1
+  # nothing is selected (Enter runs the line) unless the user had moved to an item that is still there
+  _zdrop_sel=0 _zdrop_top=1
   if [[ -n $selected ]]; then
     local -i i
     for (( i = 1; i <= ${#_zdrop_items}; i++ )); do
@@ -195,6 +198,14 @@ _zdrop_pre_redraw() {
   fi
   local prev=$_zdrop_last_lbuffer
   _zdrop_last_lbuffer=$LBUFFER
+  if [[ -n $_zdrop_ghost ]]; then
+    local typed=${LBUFFER#$prev}
+    if [[ $LBUFFER == ${prev}?* && $_zdrop_ghost == ${typed}?* ]]; then
+      _zdrop_ghost_set "${_zdrop_ghost#$typed}"
+    else
+      _zdrop_ghost_set ""
+    fi
+  fi
 
   if (( _zdrop_inserting )); then
     _zdrop_inserting=0
@@ -232,7 +243,12 @@ _zdrop_arm_repaint() {
 
 _zdrop_on_idle() {
   zle -F $1
-  _zdrop_repaint
+  if (( _zdrop_dirty )); then
+    _zdrop_dirty=0
+    _zdrop_paint
+  else
+    _zdrop_repaint
+  fi
   _zdrop_sync_end
 }
 
@@ -240,7 +256,8 @@ _zdrop_on_idle() {
 _zdrop_hide() {
   (( _zdrop_seq++ ))   # any reply still on its way is now stale
   _zdrop_items=() _zdrop_pending="" _zdrop_arghint=""
-  _zdrop_sel=1 _zdrop_top=1 _zdrop_navigated=0
+  _zdrop_sel=0 _zdrop_top=1 _zdrop_navigated=0 _zdrop_dirty=0
+  _zdrop_ghost_set ""
   [[ $_zdrop_state == dismissed ]] || _zdrop_state=hidden
   if (( ${1:-1} )); then
     _zdrop_clear
@@ -267,7 +284,11 @@ _zdrop_fallback() {
   [[ -n $widget ]] && zle $widget
 }
 
-_zdrop_field() { REPLY=${${(ps:$_zdrop_US:)_zdrop_items[$1]}[$2]}; }
+# REPLY = field $2 of item $1 (the (@) keeps empty fields, so positions never shift)
+_zdrop_field() {
+  local -a f=("${(@ps:$_zdrop_US:)_zdrop_items[$1]}")
+  REPLY=$f[$2]
+}
 
 _zdrop_insert() {
   local text=$1
@@ -282,33 +303,30 @@ _zdrop_insert() {
   _zdrop_navigated=0
 }
 
+# Enter: insert the selected suggestion; with nothing selected, run the line as typed
 _zdrop-accept() {
   _zdrop_active || { _zdrop_fallback; return }
-  local -a f=("${(@ps:$_zdrop_US:)_zdrop_items[_zdrop_sel]}")
-  if [[ $f[7] == auto-execute ]]; then
+  if (( _zdrop_sel == 0 )); then
     _zdrop_hide
     _zdrop_fallback
     return
   fi
-  _zdrop_insert "$f[3]"
+  _zdrop_field $_zdrop_sel 3
+  _zdrop_insert "$REPLY"
 }
 
 # Tab: extend the token to the longest prefix all suggestions share; if that adds nothing, take the
-# selected suggestion (a single real suggestion is taken directly)
+# selected suggestion (the first one when nothing is selected)
 _zdrop-tab() {
   setopt local_options extended_glob
   _zdrop_active || { _zdrop_fallback; return }
-  local -a real=()
-  local item
-  for item in "${_zdrop_items[@]}"; do [[ $item == *${_zdrop_US}auto-execute ]] || real+=("$item"); done
-  if (( ${#real} > 1 && ${#_zdrop_prefix} > _zdrop_replace_len )); then
+  if (( ${#_zdrop_items} > 1 && ${#_zdrop_prefix} > _zdrop_replace_len )); then
     LBUFFER=${LBUFFER[1,-$(( _zdrop_replace_len + 1 ))]}${_zdrop_prefix//(#m)[[:space:]\'\"\\\$\`\!\&\|\;\<\>\(\)\*\?\[\]\{\}\#]/\\$MATCH}
     _zdrop_inserting=1
     return
   fi
-  local pick=$_zdrop_items[_zdrop_sel]
-  [[ $pick == *${_zdrop_US}auto-execute ]] && pick=$real[1]
-  [[ -n $pick ]] && _zdrop_insert "${${(ps:$_zdrop_US:)pick}[3]}"
+  _zdrop_field $(( _zdrop_sel ? _zdrop_sel : 1 )) 3
+  _zdrop_insert "$REPLY"
 }
 
 _zdrop-down() {
@@ -319,17 +337,19 @@ _zdrop-down() {
     _zdrop_sel=1
   fi
   _zdrop_navigated=1
+  _zdrop_ghost_sync
   _zdrop_arm_repaint
 }
 
 _zdrop-up() {
   _zdrop_active || { _zdrop_fallback; return }
   if (( _zdrop_sel <= 1 )); then
-    _zdrop_hide   # Kiro: moving up past the first row closes the popup
+    _zdrop_hide   # moving up past the first row closes the popup
     return
   fi
   (( _zdrop_sel-- ))
   _zdrop_navigated=1
+  _zdrop_ghost_sync
   _zdrop_arm_repaint
 }
 
@@ -337,6 +357,53 @@ _zdrop-toggle-description() {
   _zdrop_active || { _zdrop_fallback; return }
   (( _zdrop_desc_on = !_zdrop_desc_on ))
   _zdrop_arm_repaint
+}
+
+# --- ghost text: the rest of the selected (or first) suggestion, dimmed after the cursor ---------
+
+# Show $1 as POSTDISPLAY (empty: remove ours, giving zsh-autosuggestions its text back). Widgets only.
+_zdrop_ghost_set() {
+  [[ $1 == $_zdrop_ghost ]] && return
+  [[ -n $_zdrop_ghost_hl ]] && region_highlight=("${(@)region_highlight:#$_zdrop_ghost_hl}")
+  _zdrop_ghost_hl=""
+  if [[ -z $1 ]]; then
+    [[ -n $_zdrop_ghost ]] && POSTDISPLAY=$_zdrop_ghost_saved
+    _zdrop_ghost="" _zdrop_ghost_saved=""
+    return
+  fi
+  [[ -z $_zdrop_ghost ]] && _zdrop_ghost_saved=$POSTDISPLAY
+  _zdrop_ghost=$1
+  POSTDISPLAY=$1
+  _zdrop_ghost_hl="${#BUFFER} $(( ${#BUFFER} + ${#1} )) ${ZDROP_GHOST_STYLE:-fg=8}"
+  region_highlight+=("$_zdrop_ghost_hl")
+}
+
+# Recompute the ghost from the current selection: only for a prefix match at the end of the line.
+_zdrop_ghost_sync() {
+  (( ${ZDROP_GHOST:-1} )) || return 0
+  local want=""
+  if [[ $_zdrop_state == visible && -z $RBUFFER ]] && (( ${#_zdrop_items} )); then
+    _zdrop_field $(( _zdrop_sel ? _zdrop_sel : 1 )) 3
+    local insert=$REPLY typed=""
+    (( _zdrop_replace_len )) && typed=${LBUFFER[-_zdrop_replace_len,-1]}
+    # before anything is typed, only preview a row the user moved to
+    if [[ -n $typed || _zdrop_sel -gt 0 ]] && [[ $insert != *'{cursor}'* && $insert == ${typed}?* ]]; then
+      want=${insert#$typed}
+      want=${want% }
+    fi
+  fi
+  _zdrop_ghost_set "$want"
+}
+
+# → / End: take the ghost's suggestion; otherwise do what the key did before
+_zdrop-forward() {
+  if [[ -n $_zdrop_ghost ]] && _zdrop_active; then
+    _zdrop_field $(( _zdrop_sel ? _zdrop_sel : 1 )) 3
+    _zdrop_ghost_set ""
+    _zdrop_insert "$REPLY"
+    return
+  fi
+  _zdrop_fallback
 }
 
 _zdrop-escape() {
@@ -350,13 +417,14 @@ _zdrop-escape() {
 
 # --- setup --------------------------------------------------------------------------------------
 
-typeset -ga _zdrop_widgets=(_zdrop-accept _zdrop-tab _zdrop-down _zdrop-up _zdrop-toggle-description _zdrop-escape)
+typeset -ga _zdrop_widgets=(_zdrop-accept _zdrop-tab _zdrop-down _zdrop-up _zdrop-toggle-description _zdrop-escape _zdrop-forward)
 for _zdrop_w_name in $_zdrop_widgets; do zle -N $_zdrop_w_name; done
 unset _zdrop_w_name
+zle -N _zdrop-on-msg _zdrop_on_msg
 
 # navigation must not make zsh-autosuggestions fetch or clear; accept/tab are ordinary edits to it
 typeset -ga ZSH_AUTOSUGGEST_IGNORE_WIDGETS
-ZSH_AUTOSUGGEST_IGNORE_WIDGETS+=(_zdrop-down _zdrop-up _zdrop-toggle-description _zdrop-escape)
+ZSH_AUTOSUGGEST_IGNORE_WIDGETS+=(_zdrop-down _zdrop-up _zdrop-toggle-description _zdrop-escape _zdrop-forward _zdrop-on-msg)
 
 # Bind after .zshrc has finished (first prompt), remembering what each key did so it still does that
 # whenever the popup is not open.
@@ -379,6 +447,11 @@ _zdrop_bind_keys() {
     '^[OA'  $'\eOA'  _zdrop-up                  up-line-or-history
     '^P'    $'\x10'  _zdrop-up                  up-line-or-history
     '^[[Z'  $'\e[Z'  _zdrop-up                  ''
+    '^[[C'  $'\e[C'  _zdrop-forward             forward-char
+    '^[OC'  $'\eOC'  _zdrop-forward             forward-char
+    '^E'    $'\x05'  _zdrop-forward             end-of-line
+    '^[[F'  $'\e[F'  _zdrop-forward             end-of-line
+    '^[OF'  $'\eOF'  _zdrop-forward             end-of-line
     '^K'    $'\x0b'  _zdrop-toggle-description  kill-line
     '^['    $'\e'    _zdrop-escape              ''
   )
@@ -394,9 +467,12 @@ _zdrop_bind_keys() {
   if (( $+functions[_zsh_autosuggest_async_response] && ! $+functions[_zdrop_as_async_response] )); then
     functions -c _zsh_autosuggest_async_response _zdrop_as_async_response
     _zsh_autosuggest_async_response() {
+      local ours=$_zdrop_ghost
+      [[ -n $ours ]] && _zdrop_ghost_set ""
       _zdrop_as_async_response "$@"
       local rc=$?
-      [[ -n $_zdrop_painted ]] && _zdrop_repaint
+      [[ -n $ours ]] && _zdrop_ghost_set "$ours"
+      [[ -n $_zdrop_painted ]] && _zdrop_arm_repaint
       return rc
     }
   fi

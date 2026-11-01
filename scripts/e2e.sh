@@ -52,7 +52,9 @@ check() { # check <description> <grep -E pattern> [absent]
 }
 
 text "git ch";            check "subcommands appear while typing" "› checkout"
-send Down;                check "Down moves the selection (description follows)" "Apply the changes"
+                          check "ghost text previews the first suggestion" '^\$ git checkout'
+                          check "nothing is selected at first: no run-as-typed row" "Immediately execute" absent
+send Down; send Down;     check "Down moves the selection (description follows)" "Apply the changes"
 
 # flicker guard: a keypress must reach the terminal as one synchronized frame (DEC 2026), with
 # zle's clear and our repaint inside it and exactly one paint
@@ -79,6 +81,8 @@ send Up; send Enter
 send Escape;              check "Esc closes the popup" "★ main" absent
 send C-u; text "yarn ";   check "yarn lists package.json scripts" "build:watch"
 text "b"; send Tab;       check "Tab completes a script" '^\$ yarn build'
+send C-u; text "git chec"; send Right
+                          check "→ accepts the ghost text" '^\$ git checkout *$'
 send C-u; text "cd ";     check "cd lists folders" "▸ docs"
                           check "cd does not list files" "package.json" absent
 send C-u; text "fakecl"; check "every command on PATH is offered" "fakecli"

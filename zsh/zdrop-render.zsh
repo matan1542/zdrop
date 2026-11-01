@@ -205,6 +205,7 @@ _zdrop_loading_due() {
 _zdrop_description() {
   local -a f=("${(@ps:$_zdrop_US:)1}")
   local desc=$f[4] type=$f[7] colour=$_zdrop_c[fg] hint="⌃k"
+  (( ${2:-0} )) && colour=$_zdrop_c[nodesc]
   if _zdrop_loading_due; then
     # frame from the clock, not a counter, so merged or dropped ticks never stutter
     local -i ms=$(( EPOCHREALTIME * 1000 ))
@@ -248,7 +249,7 @@ _zdrop_build_frame() {
   (( rows < 1 )) && rows=1
   (( rows > n )) && rows=n
   # keep the selection inside the visible window
-  (( _zdrop_sel < _zdrop_top )) && _zdrop_top=$_zdrop_sel
+  (( _zdrop_sel && _zdrop_sel < _zdrop_top )) && _zdrop_top=$_zdrop_sel
   (( _zdrop_sel >= _zdrop_top + rows )) && _zdrop_top=$(( _zdrop_sel - rows + 1 ))
   (( _zdrop_top < 1 )) && _zdrop_top=1
 
@@ -259,7 +260,8 @@ _zdrop_build_frame() {
   done
   if (( _zdrop_desc_on )); then
     _zdrop_separator; _zdrop_frame+=("$REPLY")
-    _zdrop_description "$_zdrop_items[_zdrop_sel]"; _zdrop_frame+=("$REPLY")
+    # with nothing selected, describe the first row, dimmed
+    _zdrop_description "$_zdrop_items[${_zdrop_sel/#%0/1}]" $(( _zdrop_sel == 0 )); _zdrop_frame+=("$REPLY")
   fi
   _zdrop_frame_w=$_zdrop_w
 }

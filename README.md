@@ -14,7 +14,7 @@ Kiro CLI–style dropdown autocomplete for zsh: an IDE-like popup while you type
 - Runs **inside the terminal**: no PTY wrapper, no desktop overlay window, no Accessibility permission.
   Works in Terminal.app, iTerm2 and VS Code / Cursor / Kiro terminals, next to zsh-autosuggestions.
 - **Kiro's look and behaviour**, taken from Amazon Q's open-source UI (which Kiro inherited): blue
-  selected row, highlighted matches, dimmed argument hints, an italic description bar, auto-execute rows,
+  selected row, highlighted matches, dimmed argument hints, an italic description bar, ghost text,
   and loading states (marching dots, or a spinner in the description bar while static results show).
 - **Every command on your PATH**, not just the 700 with a spec: tools like `claude`, `codex` or your
   team's internal CLIs are learned from their `--help` (run in a sandbox) or man page, with no
@@ -67,24 +67,21 @@ echo 'source ~/zdrop/zsh/zdrop.plugin.zsh' >> ~/.zshrc
 
 ## Keys (while the popup is open)
 
+The popup opens with nothing selected, so **Enter keeps meaning "run"** until you move into the list.
+The rest of the first (or selected) suggestion is previewed after the cursor as dimmed ghost text.
+
 | Key | Action |
 |---|---|
-| **Enter** | Insert the selected suggestion; on an `↪` row, run the command as typed |
-| **Tab** | Extend to the common prefix of all suggestions, otherwise insert the selected one |
-| **↓ / ⌃N** | Next suggestion |
+| **Enter** | Insert the selected suggestion; with nothing selected, run the command as typed |
+| **Tab** | Extend to the common prefix of all suggestions, otherwise insert the selected (or first) one |
+| **→ / End / ⌃E** | Accept the ghost text |
+| **↓ / ⌃N** | Select the next suggestion |
 | **↑ / ⌃P / ⇧Tab** | Previous suggestion; ↑ on the first row closes the popup |
 | **Esc** | Close the popup until the next word |
 | **⌃K** | Toggle the description bar |
 
-When the popup is closed, every key does exactly what it did before. Right-arrow still accepts
-zsh-autosuggestions' ghost text.
-
-An `↪` row leads the list:
-- after a space (`git `)
-- after a completed directory (`cd src/`)
-- when the typed word already matches a suggestion exactly (`git status`)
-
-So **Enter keeps meaning "run"** unless you moved into the list.
+When the popup is closed, or there is no ghost text, every key does exactly what it did before:
+→ still accepts zsh-autosuggestions' suggestion.
 
 ## Configuration
 
@@ -98,6 +95,8 @@ Set these before sourcing the plugin. Variables marked "daemon" take effect when
 | `ZDROP_MAX_ROWS` | `7` | visible rows |
 | `ZDROP_DESCRIPTION` | `1` | show the description bar |
 | `ZDROP_WRAP` | `0` | ↓ on the last row wraps to the top |
+| `ZDROP_GHOST` | `1` | preview the suggestion after the cursor; `0` turns it off |
+| `ZDROP_GHOST_STYLE` | `fg=8` | zle highlight style of the ghost text |
 | `ZDROP_SYNC` | `1` | draw each keystroke as one synchronized frame (DEC mode 2026) to avoid flicker; `0` turns it off |
 | `ZDROP_DISABLE` | `0` | `1` skips loading the plugin |
 | `ZDROP_SPEC_PATH` | | daemon: extra spec directories (colon-separated), searched first |

@@ -14,8 +14,8 @@ describe("yarn", () => {
 
   it("lists package.json scripts first after `yarn `", async () => {
     const result = await query("yarn ", app);
-    expect(names(result).slice(0, 4)).toEqual(["Immediately execute", "build", "build:watch", "test"]);
-    expect(result.items[1]).toMatchObject({ insert: "build ", description: "tsc", icon: "fig:yarn" });
+    expect(names(result).slice(0, 3)).toEqual(["build", "build:watch", "test"]);
+    expect(result.items[0]).toMatchObject({ insert: "build ", description: "tsc", icon: "fig:yarn" });
   });
 
   it("filters scripts by the typed prefix and reports what to replace", async () => {
@@ -42,18 +42,17 @@ describe("cd", () => {
     fs.mkdirSync(path.join(dir, "docs"));
     fs.writeFileSync(path.join(dir, "README.md"), "");
     const result = await query("cd ", dir);
-    const real = result.items.filter((item) => item.type !== "auto-execute");
+    const real = result.items;
     expect(real.every((item) => item.type === "folder")).toBe(true);
     expect(names(result)).toEqual(expect.arrayContaining(["src", "docs"]));
     expect(names(result)).not.toContain("README.md");
     expect(real.find((item) => item.name === "src")?.insert).toBe("src/");
   });
 
-  it("offers to enter a completed directory", async () => {
+  it("lists the children of a completed directory", async () => {
     const dir = tempDir("cd2");
     fs.mkdirSync(path.join(dir, "src", "lib"), { recursive: true });
     const result = await query("cd src/", dir);
-    expect(result.items[0]).toMatchObject({ type: "auto-execute", description: "Enter the current directory" });
     expect(names(result)).toContain("lib");
   });
 });
@@ -65,8 +64,7 @@ describe("git", () => {
     git(repo, "commit", "-q", "--allow-empty", "-m", "init");
     git(repo, "branch", "feature/login");
     const result = await query("git checkout ", repo);
-    expect(result.items[0].type).toBe("auto-execute");
-    expect(result.items[1]).toMatchObject({ name: "main", icon: "special" });
+    expect(result.items[0]).toMatchObject({ name: "main", icon: "special" });
     expect(names(result)).toContain("feature/login");
   });
 
@@ -76,9 +74,11 @@ describe("git", () => {
   });
 });
 
-describe("auto-execute", () => {
-  it("leads with a run-as-typed row when the token matches exactly", async () => {
-    const result = await query("git status", tempDir("exact"));
-    expect(result.items[0]).toMatchObject({ type: "auto-execute", name: "status" });
+describe("no run-as-typed rows", () => {
+  it("never adds an auto-execute row (Enter runs the line until you move into the list)", async () => {
+    for (const line of ["git status", "git ", "yarn "]) {
+      const result = await query(line, tempDir("exact"));
+      expect(result.items.some((item) => item.type === "auto-execute")).toBe(false);
+    }
   });
 });
