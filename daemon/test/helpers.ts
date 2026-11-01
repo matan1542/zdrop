@@ -51,7 +51,7 @@ esac
 
 export const invocations = (file: string): string[] => {
   try {
-    return fs.readFileSync(file + ".log", "utf8").trim().split("\n").filter(Boolean);
+    return fs.readFileSync(file + ".log", "utf8").split("\n").filter(Boolean);
   } catch {
     return [];
   }

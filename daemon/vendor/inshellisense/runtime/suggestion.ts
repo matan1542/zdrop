@@ -233,6 +233,8 @@ const generatorSuggestions = async (
 ): Promise<Suggestion[]> => {
   const generators = generator instanceof Array ? generator : generator ? [generator] : [];
   const tokens = allTokens.map((t) => t.token);
+  // zdrop: as in Fig, generators get the word under the cursor last, "" right after a space
+  if (allTokens.at(-1)?.complete !== false) tokens.push("");
   const activeToken = allTokens.at(-1)?.complete === false ? allTokens.at(-1)?.token ?? "" : "";
   signal?.throwIfAborted();
   return (

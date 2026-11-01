@@ -3,9 +3,10 @@ import log from "../../vendor/inshellisense/utils/log.js";
 import { learnConfig } from "./config.js";
 import { looksLikeHelp, parseHelp, type HelpNode } from "./helpParser.js";
 import type { Sandbox } from "./sandbox.js";
+import { detectProtocol, type Protocol } from "./native.js";
 
 export type ProbeOutcome =
-  | { status: "ok"; source: "help" | "man"; node: HelpNode; ms: number }
+  | { status: "ok"; source: "help" | "man"; node: HelpNode; ms: number; protocol?: Protocol }
   | { status: "miss" | "timeout" | "interrupted"; source: "help" | "man"; ms: number };
 
 export type ProbeOptions = {
@@ -46,8 +47,13 @@ export const probeHelp = async (file: string, programPath: string[], options: Pr
       timedOut = true;
       break;
     }
-    const node = parseHelp(result.stdout + "\n" + result.stderr, programPath);
-    if (looksLikeHelp(node)) return { status: "ok", source: "help", node, ms: Date.now() - started };
+    const text = result.stdout + "\n" + result.stderr;
+    const node = parseHelp(text, programPath);
+    if (looksLikeHelp(node)) {
+      // a root command built on cobra/click/yargs can also answer for live values
+      const protocol = words.length === 0 ? await detectProtocol(file, programPath[0], text, options).catch(() => undefined) : undefined;
+      return { status: "ok", source: "help", node, ms: Date.now() - started, protocol };
+    }
   }
   return { status: timedOut ? "timeout" : "miss", source: "help", ms: Date.now() - started };
 };

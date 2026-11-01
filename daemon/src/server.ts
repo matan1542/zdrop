@@ -93,7 +93,7 @@ export const serve = async (): Promise<void> => {
     const controller = new AbortController();
     session.controller = controller;
     const { signal } = controller;
-    const env: ShellEnv = session.env ?? { path: process.env.PATH ?? "/usr/bin:/bin" };
+    const env: ShellEnv = { ...(session.env ?? { path: process.env.PATH ?? "/usr/bin:/bin" }), cwd };
     builder.onQuery();
     if (learner != null) {
       // once typing pauses, learn what the user is most likely about to need

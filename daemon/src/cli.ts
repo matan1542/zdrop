@@ -20,7 +20,10 @@ const main = async (argv: string[]) => {
       const line = (cwdIndex === -1 ? rest : rest.filter((_, i) => i !== cwdIndex && i !== cwdIndex + 1)).join(" ");
       const { learner } = initRuntime();
       await learner?.store.loadIndex();
-      await runQuery(line, cwd, (result) => process.stdout.write(JSON.stringify(result) + "\n"));
+      const { requestEnv } = await import("./learn/context.js");
+      await requestEnv.run({ path: process.env.PATH ?? "/usr/bin:/bin", cwd }, () =>
+        runQuery(line, cwd, (result) => process.stdout.write(JSON.stringify(result) + "\n")),
+      );
       learner?.dispose();
       return;
     }

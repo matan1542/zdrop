@@ -117,16 +117,20 @@ export class SpecLoader implements SpecProvider {
 
   // shared by every request that needs this spec, so one request's abort must not cancel the read
   async loadRoot(name: string): Promise<Fig.Spec | undefined> {
-    const cached = this.entries.get(name);
-    if (cached != null && (cached.learned == null || cached.learned === this.learner?.version(name))) {
-      this.entries.delete(name);
-      this.entries.set(name, cached);
+    // learned specs are cached by what the name resolves to (a project's own `eslint` differs per repo)
+    const isFig = this.figNames.has(name);
+    const cacheKey = isFig ? name : this.learner?.keyFor(name);
+    if (cacheKey == null) return;
+    const cached = this.entries.get(cacheKey);
+    if (cached != null && (cached.learned == null || cached.learned === this.learner?.version(cacheKey))) {
+      this.entries.delete(cacheKey);
+      this.entries.set(cacheKey, cached);
       if (cached.learned != null) void this.learner?.check(name);
       return cached.spec;
     }
-    if (cached != null) this.drop(name);
+    if (cached != null) this.drop(cacheKey);
     if (!this.allowHeavy && heavySpecs.has(name)) return;
-    if (!this.figNames.has(name)) return this.loadLearned(name);
+    if (!isFig) return this.loadLearned(name, cacheKey);
 
     const inFlight = this.loading.get(name);
     if (inFlight != null) return inFlight;
@@ -148,13 +152,15 @@ export class SpecLoader implements SpecProvider {
   async loadPath(specPath: string, signal?: AbortSignal): Promise<Fig.Spec | undefined> {
     const root = specPath.split("/")[0];
     if (!this.allowHeavy && heavySpecs.has(root)) return;
-    const loaded = this.figNames.has(root) ? await this.read(specPath, signal) : await this.learnedPath(specPath);
+    const isFig = this.figNames.has(root);
+    const loaded = isFig ? await this.read(specPath, signal) : await this.learnedPath(specPath);
     if (loaded == null) return;
-    const rootEntry = this.entries.get(root);
+    const rootKey = isFig ? root : this.learner?.keyFor(decodeURIComponent(root));
+    const rootEntry = rootKey == null ? undefined : this.entries.get(rootKey);
     if (rootEntry != null) {
       rootEntry.bytes += loaded.bytes;
       this.totalBytes += loaded.bytes;
-      this.evict(root);
+      this.evict(rootKey!);
     }
     return loaded.spec;
   }
@@ -189,17 +195,16 @@ export class SpecLoader implements SpecProvider {
     }
   }
 
-  private async loadLearned(name: string): Promise<Fig.Spec | undefined> {
+  private async loadLearned(name: string, cacheKey: string): Promise<Fig.Spec | undefined> {
     if (this.learner == null) return;
     const spec = await this.learner.root(name);
     if (spec == null) return;
-    const version = this.learner.version(name);
+    const version = this.learner.version(cacheKey);
     const bytes = JSON.stringify(spec).length * limits.specHeapFactor;
-    const previous = this.entries.get(name);
-    if (previous != null) this.drop(name);
-    this.entries.set(name, { spec, bytes, learned: version });
+    if (this.entries.has(cacheKey)) this.drop(cacheKey);
+    this.entries.set(cacheKey, { spec, bytes, learned: version });
     this.totalBytes += bytes;
-    this.evict(name);
+    this.evict(cacheKey);
     return spec;
   }
 

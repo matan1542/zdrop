@@ -21,3 +21,5 @@
 - `utils.ts` (learning): the child runner is exported as `runProcess` with a caller-supplied
   environment, output cap, nice value and a `timedOut` flag, for sandboxed `--help` probes.
 - `generatorCache.ts` (learning): `GenerationContext.labels` names what a pending item is waiting for.
+- `suggestion.ts`: generator `tokens` end with the word under the cursor (`""` after a space), as in
+  Fig, so a generator can tell a new word from a partial one.

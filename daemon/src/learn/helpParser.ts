@@ -6,7 +6,7 @@
 // `create_manpage_completions.py`; anything unrecognised is dropped rather than guessed.
 
 /** Bumped whenever parsing changes, so cached results are re-parsed. */
-export const PARSER_VERSION = 1;
+export const PARSER_VERSION = 2;
 
 export type HelpArg = {
   name: string;

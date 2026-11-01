@@ -128,6 +128,44 @@ describe("learning a command from --help", () => {
   });
 });
 
+describe("project-local tools", () => {
+  const project = (name: string, sub: string) => {
+    const root = tempDir(`proj-${name}`);
+    const binDir = path.join(root, "node_modules", ".bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.mkdirSync(path.join(root, "packages", "web"), { recursive: true });
+    fakeCli(binDir, "localtool", `Usage: localtool [command]\n\nCommands:\n  ${sub}   Only in ${name}\n  shared   Everywhere`);
+    return root;
+  };
+  const one = project("one", "alpha");
+  const two = project("two", "beta");
+  const scripts = path.join(one, "scripts");
+  fs.mkdirSync(scripts);
+  const deploy = fakeCli(scripts, "deploy.sh", "Usage: deploy.sh [options]\n\nOptions:\n  --prod      Deploy to production\n  --dry-run   Print only");
+
+  const askIn = async (line: string, cwd: string) => {
+    const results: QueryResult[] = [];
+    await requestEnv.run({ ...env, cwd }, () => runQuery(line, cwd, (r) => results.push(r)));
+    return results.at(-1)!;
+  };
+
+  it("learns node_modules/.bin tools reached through npx, from any subfolder", async () => {
+    expect(names(await askIn("npx localtool ", path.join(one, "packages", "web")))).toEqual(expect.arrayContaining(["alpha", "shared"]));
+  });
+
+  it("keeps the same tool name in different repos apart", async () => {
+    const inTwo = names(await askIn("npx localtool ", two));
+    expect(inTwo).toContain("beta");
+    expect(inTwo).not.toContain("alpha");
+    expect(names(await askIn("npx localtool ", one))).toContain("alpha");
+  });
+
+  it("learns scripts run by path", async () => {
+    expect(names(await askIn("./scripts/deploy.sh --", one))).toEqual(expect.arrayContaining(["--prod", "--dry-run"]));
+    expect(invocations(deploy)).toEqual(["--help"]);
+  });
+});
+
 describe("safety", () => {
   it("kills a command whose --help hangs and remembers it", async () => {
     const started = Date.now();
@@ -168,5 +206,70 @@ describe("safety", () => {
     expect((await gate("zip", "/usr/bin/zip", false)).action).toBe("man");
     expect((await gate("zip", "/usr/bin/zip", true)).action).toBe("probe");
     expect((await gate("ping", "/sbin/ping", true)).reason).toMatch(/system directory/);
+  });
+});
+
+describe("native completion protocols", () => {
+  it("parses cobra, click and yargs answers", async () => {
+    const { parseNative } = await import("../src/learn/native.js");
+    expect(parseNative("cobra", "pod-a\tRunning\npod-b\n:4\n")).toEqual([
+      { name: "pod-a", description: "Running" },
+      { name: "pod-b", description: undefined },
+    ]);
+    expect(parseNative("cobra", "x\n:1\n")).toEqual([]);
+    expect(parseNative("cobra", "x\n:2\n")).toEqual([{ name: "x", description: undefined, insertValue: "x" }]);
+    expect(parseNative("cobra", "Error: unknown command\n")).toBeUndefined();
+    expect(parseNative("click", "plain\nprod\nProduction\nplain\ndev\n_\nfile\n\n_\n")).toEqual([
+      { name: "prod", description: "Production" },
+      { name: "dev", description: undefined },
+    ]);
+    expect(parseNative("click", "Usage: tool\n")).toBeUndefined();
+    expect(parseNative("yargs", "serve:start the server\nbuild\\:prod\n--help\n")).toEqual([
+      { name: "serve", description: "start the server" },
+      { name: "build:prod", description: undefined },
+    ]);
+  });
+
+  it("asks a cobra program for live argument values, after detecting it in the sandbox", async () => {
+    const nativeBin = tempDir("native-bin");
+    const cobraHelp = `fakecobra manages pods.
+
+Usage:
+  fakecobra [command]
+
+Available Commands:
+  get         Display pods
+  help        Help about any command
+
+Flags:
+  -h, --help   help for fakecobra
+
+Use "fakecobra [command] --help" for more information about a command.`;
+    const getHelp = `Display pods.
+
+Usage:
+  fakecobra get [flags]
+
+Flags:
+  -h, --help   help for get
+  -w, --watch  Watch for changes`;
+    const cobra = fakeCli(
+      nativeBin,
+      "fakecobra",
+      cobraHelp,
+      { get: getHelp },
+      `if [ "$1" = "__complete" ]; then shift
+  if [ "$1" = "get" ]; then printf 'pod-alpha\\tRunning\\npod-beta\\tPending\\n:4\\n'; else printf 'get\\tDisplay pods\\n:4\\n'; fi
+  exit 0
+fi`,
+    );
+    const nativeEnv = { path: `${nativeBin}:/usr/bin:/bin` };
+    const results: QueryResult[] = [];
+    await requestEnv.run(nativeEnv, () => runQuery("fakecobra get ", nativeBin, (r) => results.push(r)));
+    // learned (root help, the sandboxed __complete probe, `get --help`), then asked for values
+    expect(names(results.at(-1)!)).toEqual(expect.arrayContaining(["pod-alpha", "pod-beta"]));
+    expect(results.at(-1)!.items.find((i) => i.name === "pod-alpha")?.description).toBe("Running");
+    expect(invocations(cobra)).toEqual(expect.arrayContaining(["--help", "__complete ", "get --help", "__complete get "]));
+    expect((await new LearnedStore().read("fakecobra"))?.protocol).toBe("cobra");
   });
 });

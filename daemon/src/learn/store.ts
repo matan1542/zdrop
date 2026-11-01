@@ -4,6 +4,7 @@ import path from "node:path";
 import { learnConfig } from "./config.js";
 import { PARSER_VERSION, type HelpNode } from "./helpParser.js";
 import type { HelpTree } from "./figSpec.js";
+import type { Protocol } from "./native.js";
 
 // One JSON file per learned command, written atomically (tmp + rename), plus an append-only
 // `index.tsv` (name, status, description) so the daemon can describe every learned command at
@@ -21,6 +22,8 @@ export type LearnedFile = {
   key: FileKey;
   source: "help" | "man";
   status: LearnStatus;
+  /** the program's own completion protocol, when it has one (see native.ts) */
+  protocol?: Protocol;
   description: string;
   nodes: HelpTree;
   /** subcommand paths whose help could not be read, with when that was found out */
@@ -203,13 +206,22 @@ export class LearnedStore {
   }
 }
 
-export const newLearnedFile = (name: string, key: FileKey, source: "help" | "man", node: HelpNode | undefined, status: LearnStatus, previous?: LearnedFile): LearnedFile => ({
+export const newLearnedFile = (
+  name: string,
+  key: FileKey,
+  source: "help" | "man",
+  node: HelpNode | undefined,
+  status: LearnStatus,
+  previous?: LearnedFile,
+  protocol?: Protocol,
+): LearnedFile => ({
   format: 1,
   parser: PARSER_VERSION,
   name,
   key,
   source,
   status,
+  ...(protocol ? { protocol } : {}),
   description: node?.description ?? "",
   nodes: node ? { "": node } : {},
   missing: {},

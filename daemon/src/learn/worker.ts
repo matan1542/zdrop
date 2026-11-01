@@ -126,7 +126,8 @@ export const runBatch = async (): Promise<BatchExit> => {
       if (decision.action === "skip") continue;
       const outcome = await probeCommand(name, file, decision.action, options());
       if (outcome.status === "interrupted") continue;
-      await store.write(newLearnedFile(name, key, outcome.source, outcome.status === "ok" ? outcome.node : undefined, outcome.status, previous));
+      const ok = outcome.status === "ok";
+      await store.write(newLearnedFile(name, key, outcome.source, ok ? outcome.node : undefined, outcome.status, previous, ok ? outcome.protocol : undefined));
       const exit = await spend();
       if (exit != null) return exit;
     }

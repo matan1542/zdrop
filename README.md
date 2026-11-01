@@ -107,6 +107,7 @@ Set these before sourcing the plugin. Variables marked "daemon" take effect when
 | `ZDROP_LEARN` | `1` | daemon: `0` turns off learning commands from `--help` / man pages |
 | `ZDROP_LEARN_BACKGROUND` | `1` | daemon: `0` learns only commands you type, never in the background |
 | `ZDROP_LEARN_DENY` | | daemon: commands never to run `--help` for (colon-separated; their man page is still used) |
+| `ZDROP_NATIVE_DENY` | | daemon: never ask these tools for live values through their completion protocol (colon-separated) |
 | `ZDROP_LEARN_DAILY` | `500` | daemon: most background probes per day |
 | `ZDROP_DEBUG` | `0` | daemon: `1` logs to `~/.cache/zdrop/daemon.log` |
 
@@ -162,6 +163,25 @@ Commands without a Fig spec are learned automatically. There is no per-tool conf
 - **Parsing** follows the layouts of commander, clap, cobra, yargs, click, argparse, GNU getopt and mdoc
   man pages: subcommands and aliases, options, which options take a value, choices (`<a|b|c>`, `{a,b}`,
   `[possible values: …]`) and file or folder arguments.
+
+### Project tools and live values
+
+- **A project's own tools:**
+  - The CLIs in `node_modules/.bin` (found from any subfolder) are learned when you reach them through
+    `npx`, `yarn`, `pnpm exec`, `bunx` or `bun`.
+  - Scripts you run by path (`./scripts/deploy.sh`) are learned too.
+  - Each is cached by its real path, so the same tool name in two repos never mixes.
+  - These are learned on demand only, never in the background.
+- **Live values from the program itself:**
+  - Programs built on cobra (Go), click/typer (Python) or yargs (Node) have their own completion
+    protocol: `__complete`, `_PROG_COMPLETE`, `--get-yargs-completions`.
+  - zdrop detects it once, in the sandbox, from the help text's signature and an answer in the
+    protocol's exact format.
+  - It then asks the program for argument values the help can't list (contexts, pods, branches,
+    profiles), the same call its own shell completion makes on every Tab.
+  - That call runs in your real environment and folder, with the usual process limits, caching and
+    loading state.
+  - `ZDROP_NATIVE_DENY=tool1:tool2` turns it off per tool.
 
 ### Safety
 
