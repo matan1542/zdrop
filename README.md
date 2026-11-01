@@ -273,6 +273,9 @@ yarn budget                 # background-learning resource budget (RSS, probes, 
 scripts/package.sh          # release tarballs (.tar.xz) into release/: bundled Node.js for arm64 and x64, plus the heavy specs
 ```
 
+Dependencies: after `yarn add` / `yarn install` through a private npm mirror, run
+`scripts/clean-lockfile.sh` so `yarn.lock` doesn't name the mirror (CI rejects it otherwise).
+
 Releasing: bump `version` in `package.json`, commit, then push a matching tag (`git tag v0.2.0 && git push
 --tags`). The Release workflow tests the code, builds both tarballs, smoke-tests the install, and
 publishes them with `install.sh` as a GitHub release. `latest` always points at the newest one.
