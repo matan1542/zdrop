@@ -19,11 +19,10 @@ class Zdrop < Formula
   version "$version"
   license "MIT"
 
-  on_arm do
+  if Hardware::CPU.arm?
     url "$base/zdrop-$version-darwin-arm64.tar.xz"
     sha256 "$arm"
-  end
-  on_intel do
+  else
     url "$base/zdrop-$version-darwin-x64.tar.xz"
     sha256 "$intel"
   end
