@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import log from "../vendor/inshellisense/utils/log.js";
 import { setAliases } from "../vendor/inshellisense/runtime/alias.js";
 import { clearImplicitGeneratorState, getGeneratorCacheStats } from "../vendor/inshellisense/runtime/generatorCache.js";
@@ -209,6 +210,17 @@ export const serve = async (): Promise<void> => {
       armIdleTimer();
     });
   });
+
+  // A rebuilt or reinstalled zdrop must not keep answering with old code from a long-lived daemon:
+  // once our own files are newer than this process, exit; the next keystroke starts the new code.
+  const ownCode = fileURLToPath(import.meta.url);
+  setInterval(() => {
+    try {
+      if (fs.statSync(ownCode).mtimeMs > startedAt) shutdown("code updated");
+    } catch {
+      shutdown("code removed");
+    }
+  }, 10_000).unref();
 
   // Restarting is the only way to hand memory back from V8; the plugin respawns us on its next keystroke.
   setInterval(() => {
