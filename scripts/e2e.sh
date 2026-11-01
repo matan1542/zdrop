@@ -54,8 +54,10 @@ check() { # check <description> <grep -E pattern> [absent]
 text "git ch";            check "subcommands appear while typing" "› checkout"
                           check "an update notice shows in the first popup" "zdrop 9.9.9 available"
                           check "ghost text previews the first suggestion" '^\$ git checkout'
-                          check "nothing is selected at first: no run-as-typed row" "Immediately execute" absent
-send Down; send Down;     check "Down moves the selection (description follows)" "Apply the changes"
+                          check "no run-as-typed row" "Immediately execute" absent
+if $tmux_ capture-pane -t t -p -e | grep '48;2;30;90;199m' | sed 's/\x1b\[[0-9;]*m//g' | grep -q 'checkout'; then echo "ok   the first row is highlighted (Kiro blue)"
+else echo "FAIL the first row is highlighted (Kiro blue)"; failures=$((failures + 1)); fi
+send Down;                check "Down moves the selection (description follows)" "Apply the changes"
 
 # flicker guard: a keypress must reach the terminal as one synchronized frame (DEC 2026), with
 # zle's clear and our repaint inside it and exactly one paint
@@ -77,27 +79,34 @@ PY2
 send Up
 if frame_check; then echo "ok   moving through the list is one synchronized frame per key"; else echo "FAIL moving through the list is one synchronized frame per key"; failures=$((failures + 1)); fi
 send Up; send Enter
-                          check "Enter inserts the selection" '^\$ git checkout *$'
+                          check "Enter fills in the highlighted row" '^\$ git checkout *$'
                           check "next token lists branches, current first" "★ main"
 send Escape;              check "Esc closes the popup" "★ main" absent
 send C-u; text "yarn ";   check "yarn lists package.json scripts" "build:watch"
-text "b"; send Tab;       check "Tab completes a script" '^\$ yarn build'
+text "b"; send Enter;     check "Enter fills in a partly typed word" '^\$ yarn build *$'
+send C-u; text "git ch"; send Tab
+                          check "Tab moves to the next row" "Apply the changes"
+send BTab;                check "Shift-Tab moves back" "Switch branches"
 send C-u; text "git chec"; send Right
-                          check "→ accepts the ghost text" '^\$ git checkout *$'
+                          check "→ fills in the highlighted row" '^\$ git checkout *$'
 send C-u; text "cd ";     check "cd lists folders" "▸ docs"
                           check "the notice shows only once per shell" "9.9.9" absent
                           check "cd does not list files" "package.json" absent
 send C-u; text "fakecl"; check "every command on PATH is offered" "fakecli"
 text "i "; sleep 1;       check "a CLI without a spec is learned from --help" "› deploy"
-send Down;                check "learned subcommands carry descriptions" "Deploy a target"
+                          check "learned subcommands carry descriptions" "Deploy a target"
 send C-u; text "fakecli deploy --"; sleep 1
                           check "learned subcommand flags" "--dry-run"
 # history and frecency come from what the shell actually runs
 send C-u; text "git cherry-pick --abort 2>/dev/null; cd deep/inner; cd ../.."; send Enter; sleep 0.5
 text "git ch";            check "what you ran ranks first (ghost shows it)" '^\$ git cherry-pick'
 send C-u; text "cd ";     check "cd offers a frecent directory" "⌂ .*deep/inner/"
+send C-u; text "ls "; send Enter
+                          check "after a space Enter runs the line" "^.*build:watch|^app|package\.json"
+send C-u; text "git status"; send Enter
+                          check "Enter runs when the word is already the suggestion" "On branch main"
 send C-u; text "echo e2e-ran"; send Enter
-                          check "Enter runs a command when nothing is selected" "^e2e-ran"
+                          check "Enter runs a command with no suggestions" "^e2e-ran"
 
 [ $failures = 0 ] && echo "all e2e checks passed" || echo "$failures e2e check(s) failed"
 exit $failures

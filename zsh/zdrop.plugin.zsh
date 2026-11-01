@@ -31,7 +31,7 @@ typeset -ga _zdrop_visited=()             # directories changed into while runni
 # what is on screen
 typeset -g  _zdrop_state=hidden          # visible | hidden | dismissed (Esc: stays hidden until a new token)
 typeset -ga _zdrop_items=()
-typeset -gi _zdrop_sel=0 _zdrop_top=1 _zdrop_navigated=0   # sel 0: nothing selected, Enter runs the line
+typeset -gi _zdrop_sel=1 _zdrop_top=1 _zdrop_navigated=0
 typeset -gi _zdrop_replace_len=0 _zdrop_typed_len=0 _zdrop_prompt_w=0
 # cursor column of the card on screen, and of the query in flight (committed when its reply arrives,
 # so repaints before then keep the card where it is)
@@ -138,8 +138,8 @@ _zdrop_take_result() {
   (( _zdrop_notice_done )) || _zdrop_notice=$head[7]
   _zdrop_typed_len=$_zdrop_replace_len
   _zdrop_items=("${(@)recs[2,-1]}")
-  # nothing is selected (Enter runs the line) unless the user had moved to an item that is still there
-  _zdrop_sel=0 _zdrop_top=1
+  # Kiro: the first row is highlighted, unless the user had moved to an item that is still there
+  _zdrop_sel=1 _zdrop_top=1
   if [[ -n $selected ]]; then
     local -i i
     for (( i = 1; i <= ${#_zdrop_items}; i++ )); do
@@ -263,7 +263,7 @@ _zdrop_on_idle() {
 _zdrop_hide() {
   (( _zdrop_seq++ ))   # any reply still on its way is now stale
   _zdrop_items=() _zdrop_pending="" _zdrop_arghint=""
-  _zdrop_sel=0 _zdrop_top=1 _zdrop_navigated=0 _zdrop_dirty=0
+  _zdrop_sel=1 _zdrop_top=1 _zdrop_navigated=0 _zdrop_dirty=0
   # the notice was on screen for one popup: that's enough for this shell
   [[ -n $_zdrop_notice && -n $_zdrop_painted ]] && _zdrop_notice="" _zdrop_notice_done=1
   _zdrop_ghost_set ""
@@ -314,30 +314,38 @@ _zdrop_insert() {
   _zdrop_navigated=0
 }
 
-# Enter: insert the selected suggestion; with nothing selected, run the line as typed
+# Enter fills in the highlighted suggestion when it extends the word being typed (what the ghost text
+# shows) or the user moved into the list. Otherwise -- right after a space, when the word is already
+# complete, or for a fuzzy match -- it runs the line as typed.
 _zdrop-accept() {
   _zdrop_active || { _zdrop_fallback; return }
-  if (( _zdrop_sel == 0 )); then
-    _zdrop_hide
-    _zdrop_fallback
-    return
+  if (( ! _zdrop_navigated )); then
+    _zdrop_extension
+    if [[ -z $REPLY ]]; then
+      _zdrop_hide
+      _zdrop_fallback
+      return
+    fi
   fi
   _zdrop_field $_zdrop_sel 3
   _zdrop_insert "$REPLY"
 }
 
-# Tab: extend the token to the longest prefix all suggestions share; if that adds nothing, take the
-# selected suggestion (the first one when nothing is selected)
+# Tab / Shift-Tab: next / previous suggestion, wrapping around
 _zdrop-tab() {
-  setopt local_options extended_glob
   _zdrop_active || { _zdrop_fallback; return }
-  if (( ${#_zdrop_items} > 1 && ${#_zdrop_prefix} > _zdrop_replace_len )); then
-    LBUFFER=${LBUFFER[1,-$(( _zdrop_replace_len + 1 ))]}${_zdrop_prefix//(#m)[[:space:]\'\"\\\$\`\!\&\|\;\<\>\(\)\*\?\[\]\{\}\#]/\\$MATCH}
-    _zdrop_inserting=1
-    return
-  fi
-  _zdrop_field $(( _zdrop_sel ? _zdrop_sel : 1 )) 3
-  _zdrop_insert "$REPLY"
+  (( _zdrop_sel = _zdrop_sel % ${#_zdrop_items} + 1 ))
+  _zdrop_navigated=1
+  _zdrop_ghost_sync
+  _zdrop_arm_repaint
+}
+
+_zdrop-tab-back() {
+  _zdrop_active || { _zdrop_fallback; return }
+  (( _zdrop_sel = _zdrop_sel > 1 ? _zdrop_sel - 1 : ${#_zdrop_items} ))
+  _zdrop_navigated=1
+  _zdrop_ghost_sync
+  _zdrop_arm_repaint
 }
 
 _zdrop-down() {
@@ -392,24 +400,33 @@ _zdrop_ghost_set() {
 # Recompute the ghost from the current selection: only for a prefix match at the end of the line.
 _zdrop_ghost_sync() {
   (( ${ZDROP_GHOST:-1} )) || return 0
-  local want=""
-  if [[ $_zdrop_state == visible && -z $RBUFFER ]] && (( ${#_zdrop_items} )); then
-    _zdrop_field $(( _zdrop_sel ? _zdrop_sel : 1 )) 3
-    local insert=$REPLY typed=""
-    (( _zdrop_replace_len )) && typed=${LBUFFER[-_zdrop_replace_len,-1]}
-    # before anything is typed, only preview a row the user moved to
-    if [[ -n $typed || _zdrop_sel -gt 0 ]] && [[ $insert != *'{cursor}'* && $insert == ${typed}?* ]]; then
-      want=${insert#$typed}
-      want=${want% }
-    fi
-  fi
-  _zdrop_ghost_set "$want"
+  _zdrop_extension
+  _zdrop_ghost_set "${REPLY% }"
 }
 
-# → / End: take the ghost's suggestion; otherwise do what the key did before
+# REPLY = what filling in the highlighted row would add after the cursor: non-empty only when the row
+# extends the typed word (a prefix match), or for any row the user moved to. Drives the ghost text and
+# whether Enter fills in or runs.
+_zdrop_extension() {
+  REPLY=""
+  [[ $_zdrop_state == visible && -z $RBUFFER ]] && (( ${#_zdrop_items} )) || return 0
+  local typed=""
+  (( _zdrop_replace_len )) && typed=${LBUFFER[-_zdrop_replace_len,-1]}
+  _zdrop_field $_zdrop_sel 3
+  local insert=$REPLY
+  REPLY=""
+  [[ -n $typed ]] || (( _zdrop_navigated )) || return 0
+  [[ $insert != *'{cursor}'* && $insert == ${typed}?* && ${insert% } != $typed ]] && REPLY=${insert#$typed}
+  # only a slash left to add: the directory is already typed in full
+  [[ $REPLY == / ]] && ! (( _zdrop_navigated )) && REPLY=""
+  return 0
+}
+
+# →: fill in the highlighted suggestion; with the popup closed, do what the key did before (which
+# still accepts zsh-autosuggestions' text)
 _zdrop-forward() {
-  if [[ -n $_zdrop_ghost ]] && _zdrop_active; then
-    _zdrop_field $(( _zdrop_sel ? _zdrop_sel : 1 )) 3
+  if _zdrop_active; then
+    _zdrop_field $_zdrop_sel 3
     _zdrop_ghost_set ""
     _zdrop_insert "$REPLY"
     return
@@ -428,14 +445,14 @@ _zdrop-escape() {
 
 # --- setup --------------------------------------------------------------------------------------
 
-typeset -ga _zdrop_widgets=(_zdrop-accept _zdrop-tab _zdrop-down _zdrop-up _zdrop-toggle-description _zdrop-escape _zdrop-forward)
+typeset -ga _zdrop_widgets=(_zdrop-accept _zdrop-tab _zdrop-tab-back _zdrop-down _zdrop-up _zdrop-toggle-description _zdrop-escape _zdrop-forward)
 for _zdrop_w_name in $_zdrop_widgets; do zle -N $_zdrop_w_name; done
 unset _zdrop_w_name
 zle -N _zdrop-on-msg _zdrop_on_msg
 
 # navigation must not make zsh-autosuggestions fetch or clear; accept/tab are ordinary edits to it
 typeset -ga ZSH_AUTOSUGGEST_IGNORE_WIDGETS
-ZSH_AUTOSUGGEST_IGNORE_WIDGETS+=(_zdrop-down _zdrop-up _zdrop-toggle-description _zdrop-escape _zdrop-forward _zdrop-on-msg)
+ZSH_AUTOSUGGEST_IGNORE_WIDGETS+=(_zdrop-down _zdrop-up _zdrop-tab _zdrop-tab-back _zdrop-toggle-description _zdrop-escape _zdrop-forward _zdrop-on-msg)
 
 # Bind after .zshrc has finished (first prompt), remembering what each key did so it still does that
 # whenever the popup is not open.
@@ -457,12 +474,9 @@ _zdrop_bind_keys() {
     '^[[A'  $'\e[A'  _zdrop-up                  up-line-or-history
     '^[OA'  $'\eOA'  _zdrop-up                  up-line-or-history
     '^P'    $'\x10'  _zdrop-up                  up-line-or-history
-    '^[[Z'  $'\e[Z'  _zdrop-up                  ''
+    '^[[Z'  $'\e[Z'  _zdrop-tab-back            ''
     '^[[C'  $'\e[C'  _zdrop-forward             forward-char
     '^[OC'  $'\eOC'  _zdrop-forward             forward-char
-    '^E'    $'\x05'  _zdrop-forward             end-of-line
-    '^[[F'  $'\e[F'  _zdrop-forward             end-of-line
-    '^[OF'  $'\eOF'  _zdrop-forward             end-of-line
     '^K'    $'\x0b'  _zdrop-toggle-description  kill-line
     '^['    $'\e'    _zdrop-escape              ''
   )

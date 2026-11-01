@@ -80,21 +80,24 @@ echo 'source ~/zdrop/zsh/zdrop.plugin.zsh' >> ~/.zshrc
 
 ## Keys (while the popup is open)
 
-The popup opens with nothing selected, so **Enter keeps meaning "run"** until you move into the list.
-The rest of the first (or selected) suggestion is previewed after the cursor as dimmed ghost text.
+Like Kiro, the first suggestion is highlighted in blue as soon as the popup opens. The rest of the
+highlighted suggestion is previewed after the cursor as dimmed ghost text.
 
 | Key | Action |
 |---|---|
-| **Enter** | Insert the selected suggestion; with nothing selected, run the command as typed |
-| **Tab** | Extend to the common prefix of all suggestions, otherwise insert the selected (or first) one |
-| **→ / End / ⌃E** | Accept the ghost text |
-| **↓ / ⌃N** | Select the next suggestion |
-| **↑ / ⌃P / ⇧Tab** | Previous suggestion; ↑ on the first row closes the popup |
+| **Tab / ↓ / ⌃N** | Next suggestion (Tab wraps around) |
+| **⇧Tab / ↑ / ⌃P** | Previous suggestion (⇧Tab wraps around; ↑ on the first row closes the popup) |
+| **→** | Fill in the highlighted suggestion |
+| **Enter** | Fill in the highlighted suggestion while it extends the word you are typing (the ghost text) or after you moved into the list; otherwise run the command |
 | **Esc** | Close the popup until the next word |
 | **⌃K** | Toggle the description bar |
 
-When the popup is closed, or there is no ghost text, every key does exactly what it did before:
-→ still accepts zsh-autosuggestions' suggestion.
+So Enter runs the line right after a space (`cd `, `git checkout main `), when the word is already
+complete (`git status`, `cd ../..`) and when nothing matches, and fills in while you type (`git ch` →
+`git checkout `).
+
+When the popup is closed, every key does exactly what it did before: Tab is zsh's completion, and →
+still accepts zsh-autosuggestions' suggestion.
 
 ## Configuration
 

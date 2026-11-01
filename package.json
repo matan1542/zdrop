@@ -1,6 +1,6 @@
 {
   "name": "zdrop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Kiro-style IDE dropdown autocomplete for zsh, backed by Fig specs",
   "type": "module",
