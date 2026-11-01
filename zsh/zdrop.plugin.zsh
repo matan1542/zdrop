@@ -25,6 +25,8 @@ typeset -gF _zdrop_started_at=0
 typeset -g  _zdrop_sent_path=""           # PATH last sent to the daemon (commands are learned against it)
 typeset -g  _zdrop_ghost="" _zdrop_ghost_hl="" _zdrop_ghost_saved=""  # inline preview after the cursor
 typeset -gi _zdrop_dirty=0                # the next idle repaint must draw (a new result arrived)
+typeset -g  _zdrop_notice=""              # an update notice from the daemon, shown in one popup per shell
+typeset -gi _zdrop_notice_done=0
 typeset -ga _zdrop_visited=()             # directories changed into while running a command (sent at the next prompt)
 # what is on screen
 typeset -g  _zdrop_state=hidden          # visible | hidden | dismissed (Esc: stays hidden until a new token)
@@ -133,6 +135,7 @@ _zdrop_take_result() {
   (( _zdrop_navigated )) && selected=${${(ps:$_zdrop_US:)_zdrop_items[_zdrop_sel]}[2]}
   _zdrop_anchor=$_zdrop_query_anchor
   _zdrop_replace_len=$head[3] _zdrop_prefix=$head[4] _zdrop_arghint=$head[5] _zdrop_pending=$head[6]
+  (( _zdrop_notice_done )) || _zdrop_notice=$head[7]
   _zdrop_typed_len=$_zdrop_replace_len
   _zdrop_items=("${(@)recs[2,-1]}")
   # nothing is selected (Enter runs the line) unless the user had moved to an item that is still there
@@ -261,6 +264,8 @@ _zdrop_hide() {
   (( _zdrop_seq++ ))   # any reply still on its way is now stale
   _zdrop_items=() _zdrop_pending="" _zdrop_arghint=""
   _zdrop_sel=0 _zdrop_top=1 _zdrop_navigated=0 _zdrop_dirty=0
+  # the notice was on screen for one popup: that's enough for this shell
+  [[ -n $_zdrop_notice && -n $_zdrop_painted ]] && _zdrop_notice="" _zdrop_notice_done=1
   _zdrop_ghost_set ""
   [[ $_zdrop_state == dismissed ]] || _zdrop_state=hidden
   if (( ${1:-1} )); then

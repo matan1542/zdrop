@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import net from "node:net";
+import path from "node:path";
 import log from "../vendor/inshellisense/utils/log.js";
 import { setAliases } from "../vendor/inshellisense/runtime/alias.js";
 import { clearImplicitGeneratorState, getGeneratorCacheStats } from "../vendor/inshellisense/runtime/generatorCache.js";
@@ -11,6 +12,7 @@ import { BackgroundBuilder } from "./learn/builder.js";
 import { learnConfig } from "./learn/config.js";
 import { requestEnv, type ShellEnv } from "./learn/context.js";
 import { dirs } from "./rank/dirs.js";
+import { startUpdateCheck, updateNotice } from "./update.js";
 import { usage } from "./rank/usage.js";
 
 const progressIntervalMs = 100;
@@ -32,8 +34,18 @@ const alreadyRunning = (): Promise<boolean> =>
     probe.once("error", () => resolve(false));
   });
 
+/** Keeps a log under 1 MB: the previous one is kept as `.1`. */
+const rotate = (file: string) => {
+  try {
+    if (fs.statSync(file).size > 1024 * 1024) fs.renameSync(file, file + ".1");
+  } catch {
+    // no log yet
+  }
+};
+
 export const serve = async (): Promise<void> => {
   fs.mkdirSync(zdropHome, { recursive: true, mode: 0o700 });
+  rotate(path.join(zdropHome, "daemon.log"));
   if (await alreadyRunning()) {
     log.debug({ msg: "daemon already running" });
     return;
@@ -52,8 +64,17 @@ export const serve = async (): Promise<void> => {
   const startedAt = Date.now();
   let idleTimer: NodeJS.Timeout | undefined;
 
-  const shutdown = (reason: string) => {
+  const shutdown = (reason: string, code = 0) => {
     log.debug({ msg: "shutting down", reason });
+    // `zdrop doctor` and `status` report why the daemon last went away
+    try {
+      fs.writeFileSync(
+        path.join(zdropHome, "last-exit.json"),
+        JSON.stringify({ reason, at: new Date().toISOString(), pid: process.pid, rssMB: mb(process.memoryUsage().rss), uptimeSeconds: Math.round((Date.now() - startedAt) / 1000) }),
+      );
+    } catch {
+      // best effort
+    }
     builder.stop();
     dirs.flush();
     killAllChildren();
@@ -62,7 +83,7 @@ export const serve = async (): Promise<void> => {
     for (const socket of sessions) socket.destroy();
     fs.rmSync(socketPath, { force: true });
     fs.rmSync(pidPath, { force: true });
-    process.exit(0);
+    process.exit(code);
   };
 
   const armIdleTimer = () => {
@@ -107,7 +128,7 @@ export const serve = async (): Promise<void> => {
       (result) => {
         if (signal.aborted || socket.destroyed) return;
         clearInterval(session.progress);
-        socket.write(encodeResult(seq, result));
+        socket.write(encodeResult(seq, result, updateNotice));
         if (result.pending.length > 0) {
           const label = result.pending.join(", ");
           session.progress = setInterval(() => {
@@ -197,6 +218,9 @@ export const serve = async (): Promise<void> => {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGHUP", () => {}); // survive the terminal that started us closing
+  // a bug must not leave a half-working daemon: record it and exit; the next keystroke starts a fresh one
+  process.on("uncaughtException", (e) => shutdown(`crash: ${e.message}`, 1));
+  process.on("unhandledRejection", (e) => shutdown(`crash: ${e instanceof Error ? e.message : String(e)}`, 1));
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -206,6 +230,7 @@ export const serve = async (): Promise<void> => {
       armIdleTimer();
       log.debug({ msg: "listening", socketPath, pid: process.pid });
       if (learner != null) builder.start();
+      startUpdateCheck();
       resolve();
     });
   });

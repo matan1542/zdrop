@@ -9,6 +9,7 @@ const usage = `usage:
   zdrop learn <command> [subcommand...]        learn a command from --help / man now and print the result
   zdrop why <command>                          where a command's completions come from, and why
   zdrop forget <command>|--all                 drop learned completions (relearned on next use)
+  zdrop doctor                                 check the setup, with a fix for each problem
   zdrop version | update [version] | uninstall`;
 
 const main = async (argv: string[]) => {
@@ -44,6 +45,20 @@ const main = async (argv: string[]) => {
       } finally {
         learner.dispose();
       }
+      return;
+    }
+    case "doctor": {
+      const { defaultDoctorEnv, printDoctor, runDoctor } = await import("./doctor.js");
+      const { request } = await import("./client.js");
+      const env = defaultDoctorEnv();
+      env.status = async () => {
+        try {
+          return JSON.parse(await request("S")) as Record<string, unknown>;
+        } catch {
+          return undefined;
+        }
+      };
+      process.exitCode = printDoctor(await runDoctor(env));
       return;
     }
     case "forget": {

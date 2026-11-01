@@ -30,7 +30,7 @@ On macOS (Apple silicon or Intel), with zsh:
 curl -fsSL https://github.com/matan1542/zdrop/releases/latest/download/install.sh | sh
 ```
 
-Then open a new terminal tab. The installer:
+Then open a new terminal tab (run `zdrop doctor` if the popup doesn't show). The installer:
 - downloads the release for your Mac and verifies its SHA-256 checksum
 - installs into `~/.zdrop`. The release bundles its own Node.js, so nothing else is needed and nvm or
   fnm version switching can't break it.
@@ -39,6 +39,7 @@ Then open a new terminal tab. The installer:
 - links `zdrop` into `~/.local/bin` if that directory exists
 
 ```sh
+zdrop doctor             # checks the setup, with a fix for each problem
 zdrop update             # latest release (or: zdrop update 0.2.0)
 zdrop uninstall          # removes ~/.zdrop, the ~/.zshrc line and the cache
 zdrop version
@@ -98,6 +99,7 @@ Set these before sourcing the plugin. Variables marked "daemon" take effect when
 | `ZDROP_GHOST` | `1` | preview the suggestion after the cursor; `0` turns it off |
 | `ZDROP_GHOST_STYLE` | `fg=8` | zle highlight style of the ghost text |
 | `ZDROP_SYNC` | `1` | draw each keystroke as one synchronized frame (DEC mode 2026) to avoid flicker; `0` turns it off |
+| `ZDROP_UPDATE_CHECK` | `1` | daemon: `0` never checks GitHub for a newer release (otherwise at most weekly; a newer one is mentioned once per shell in the description bar) |
 | `ZDROP_DISABLE` | `0` | `1` skips loading the plugin |
 | `ZDROP_SPEC_PATH` | | daemon: extra spec directories (colon-separated), searched first |
 | `ZDROP_HEAVY_SPECS` | `0` | daemon: `1` enables the aws, gcloud and az specs (82% of all spec bytes) |
@@ -115,6 +117,7 @@ Set these before sourcing the plugin. Variables marked "daemon" take effect when
 
 ```sh
 bin/zdrop query "git checkout " --cwd .   # suggestions as JSON (in-process, no daemon needed)
+bin/zdrop doctor                          # setup checks: ~/.zshrc order, IDE popups, daemon, sandbox, updates
 bin/zdrop status                          # daemon memory, loaded specs, caches, child processes
 bin/zdrop stop
 bin/zdrop learn claude mcp                # learn a command (and subcommand) now, print what was parsed

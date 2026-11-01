@@ -25,6 +25,8 @@ case "${1:-}" in
   start)
     # detached from the terminal; the daemon itself refuses to start twice
     mkdir -p "$home"
+    # keep daemon.out under 1 MB (the previous one is kept as .1)
+    [ -f "$home/daemon.out" ] && [ "$(wc -c <"$home/daemon.out")" -gt 1048576 ] && mv -f "$home/daemon.out" "$home/daemon.out.1"
     nohup "$node" $node_flags "$root/dist/src/cli.js" serve >>"$home/daemon.out" 2>&1 </dev/null &
     ;;
   version | --version | -v)

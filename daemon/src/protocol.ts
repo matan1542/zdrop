@@ -16,7 +16,8 @@ import type { QueryResult } from "./engine.js";
 //   S                               status (JSON reply, for `zdrop status`)
 //   X                               stop the daemon
 // daemon → client
-//   R US seq US replaceLen US commonPrefix US argHint US pending RS item RS item ...
+//   R US seq US replaceLen US commonPrefix US argHint US pending US notice RS item RS item ...
+//        notice = a one-line message for the description bar (an available update), usually empty
 //        item = icon US name US insert US description US args US matchIndices(,) US type
 //   P US seq US label               a generator is still running (sent ~every 100ms while pending)
 
@@ -30,8 +31,8 @@ export const pidPath = path.join(zdropHome, "zdrop.pid");
 // eslint-disable-next-line no-control-regex
 const clean = (value: string): string => value.replace(/[\x00-\x1f\x7f]/g, " ");
 
-export const encodeResult = (seq: string, result: QueryResult): string => {
-  const header = [seq, String(result.replaceLen), clean(result.commonPrefix), clean(result.argHint), clean(result.pending.join(", "))].join(US);
+export const encodeResult = (seq: string, result: QueryResult, notice = ""): string => {
+  const header = [seq, String(result.replaceLen), clean(result.commonPrefix), clean(result.argHint), clean(result.pending.join(", ")), clean(notice)].join(US);
   const items = result.items.map((item) =>
     [item.icon, item.name, item.insert, item.description, item.args, item.matchIndices.join(","), item.type].map(clean).join(US),
   );

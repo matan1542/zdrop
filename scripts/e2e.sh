@@ -39,7 +39,7 @@ cd "$app"
 EOF
 
 $tmux_ -f /dev/null new-session -d -x 100 -y 30 -s t \
-  "env ZDOTDIR=$work/zdot ZDROP_HOME=$work/home ZDROP_LEARN_BACKGROUND=0 COLORTERM=truecolor TERM=xterm-256color zsh -i"
+  "env ZDOTDIR=$work/zdot ZDROP_HOME=$work/home ZDROP_LEARN_BACKGROUND=0 ZDROP_TEST_NOTICE='zdrop 9.9.9 available' COLORTERM=truecolor TERM=xterm-256color zsh -i"
 sleep 1.5
 
 send() { $tmux_ send-keys -t t "$@"; sleep 0.5; }
@@ -52,6 +52,7 @@ check() { # check <description> <grep -E pattern> [absent]
 }
 
 text "git ch";            check "subcommands appear while typing" "› checkout"
+                          check "an update notice shows in the first popup" "zdrop 9.9.9 available"
                           check "ghost text previews the first suggestion" '^\$ git checkout'
                           check "nothing is selected at first: no run-as-typed row" "Immediately execute" absent
 send Down; send Down;     check "Down moves the selection (description follows)" "Apply the changes"
@@ -84,6 +85,7 @@ text "b"; send Tab;       check "Tab completes a script" '^\$ yarn build'
 send C-u; text "git chec"; send Right
                           check "→ accepts the ghost text" '^\$ git checkout *$'
 send C-u; text "cd ";     check "cd lists folders" "▸ docs"
+                          check "the notice shows only once per shell" "9.9.9" absent
                           check "cd does not list files" "package.json" absent
 send C-u; text "fakecl"; check "every command on PATH is offered" "fakecli"
 text "i "; sleep 1;       check "a CLI without a spec is learned from --help" "› deploy"
