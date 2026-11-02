@@ -21,6 +21,7 @@ jobs:
       - run: yarn build
       - run: yarn typecheck
       - run: yarn test
+      - run: yarn setup-test
       - name: End-to-end (zsh in tmux)
         run: |
           brew install tmux

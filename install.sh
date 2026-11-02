@@ -7,6 +7,7 @@
 #   ZDROP_VERSION=0.2.0     install a specific release (default: latest)
 #   ZDROP_PREFIX=~/.zdrop   where to install
 #   ZDROP_NO_RC=1           do not edit ~/.zshrc
+#   ZDROP_NO_LOGIN=1        do not start the daemon at login
 #   ZDROP_TARBALL=<file>    install from a local tarball (testing)
 #
 # Re-running it updates in place. `zdrop uninstall` removes everything it added.
@@ -16,7 +17,6 @@ repo="matan1542/zdrop"
 prefix="${ZDROP_PREFIX:-$HOME/.zdrop}"
 version="${ZDROP_VERSION:-latest}"
 zshrc="${ZDOTDIR:-$HOME}/.zshrc"
-marker="# zdrop: Kiro-style autocomplete (keep this last)"
 
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -79,25 +79,13 @@ if [ -d "$HOME/.local/bin" ]; then
   ln -sfn "$prefix/current/bin/zdrop" "$HOME/.local/bin/zdrop"
 fi
 
-if [ "${ZDROP_NO_RC:-0}" != 1 ]; then
-  line="source \"$prefix/current/zsh/zdrop.plugin.zsh\""
-  touch "$zshrc"
-  if grep -qF "$line" "$zshrc"; then
-    :
-  else
-    cp "$zshrc" "$zshrc.bak-zdrop-$(date +%Y%m%d%H%M%S)"
-    # another copy of zdrop (a git checkout) would load twice: comment it out
-    if grep -q '^[^#]*zdrop\.plugin\.zsh' "$zshrc"; then
-      sed -i '' 's|^\([^#]*zdrop\.plugin\.zsh.*\)$|# \1  # replaced by the zdrop installer|' "$zshrc"
-      say "Commented out an older zdrop line in $zshrc"
-    fi
-    grep -qF "$marker" "$zshrc" || printf '\n%s\n' "$marker" >>"$zshrc"
-    printf '%s\n' "$line" >>"$zshrc"
-    say "Added zdrop to $zshrc (backup saved next to it)"
-  fi
+# the ~/.zshrc line and the login item (it honours ZDROP_NO_RC and ZDROP_NO_LOGIN)
+if ! "$prefix/current/bin/zdrop" setup 2>/dev/null; then
+  # releases before 0.2.2 have no `zdrop setup`
+  [ "${ZDROP_NO_RC:-0}" = 1 ] || say "Add this line to the end of $zshrc: source \"$prefix/current/zsh/zdrop.plugin.zsh\""
 fi
 
-say "zdrop $installed_version installed. Open a new terminal tab (or run: exec zsh)."
+say "zdrop $installed_version installed."
 cat <<EOF
     Keep the source line LAST in ~/.zshrc (after oh-my-zsh, zsh-autosuggestions, …).
     In VS Code / Cursor, set "terminal.integrated.suggest.enabled": false.

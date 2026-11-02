@@ -33,7 +33,13 @@ const pluginLine = /^[^#]*zdrop\.plugin\.zsh/;
 const laterLoaders = /(^|\s)(source|\.)\s+\S|^\s*plugins=|\b(zinit|antidote|antigen|zplug|zgenom|sheldon)\b|oh-my-zsh\.sh|zsh-autosuggestions|fzf-tab/;
 const otherPopups = /kiro-cli\s+init|\bq\s+init\b|fig\s+init|amazon-q|inshellisense|\bis\s+init/;
 
-export const checkZshrc = (zshrc: string): Check[] => {
+/** The file a zdrop line sources, when it can be resolved without running the shell. */
+const sourcedPath = (line: string, home: string): string | undefined => {
+  const file = /(?:source|\.)\s+["']?([^"'\s]*zdrop\.plugin\.zsh)/.exec(line)?.[1]?.replace(/^(~|\$HOME|\$\{HOME\})(?=\/)/, home);
+  return file != null && file.startsWith("/") && !file.includes("$") ? file : undefined;
+};
+
+export const checkZshrc = (zshrc: string, home = os.homedir()): Check[] => {
   let text: string;
   try {
     text = fs.readFileSync(zshrc, "utf8");
@@ -43,7 +49,9 @@ export const checkZshrc = (zshrc: string): Check[] => {
   const lines = text.split("\n");
   const at = lines.map((line, i) => (pluginLine.test(line) ? i : -1)).filter((i) => i >= 0);
   const checks: Check[] = [];
-  if (at.length === 0) return [fail("~/.zshrc loads zdrop", "no line sources zdrop.plugin.zsh: re-run the installer")];
+  if (at.length === 0) return [fail("~/.zshrc loads zdrop", "no line sources zdrop.plugin.zsh: run  zdrop setup")];
+  const file = sourcedPath(lines[at.at(-1)!], home);
+  if (file != null && !fs.existsSync(file)) checks.push(fail("~/.zshrc loads zdrop", `line ${at.at(-1)! + 1} sources ${file}, which does not exist: run  zdrop setup`));
   if (at.length > 1) checks.push(fail("~/.zshrc loads zdrop once", `${at.length} lines source zdrop.plugin.zsh (lines ${at.map((i) => i + 1).join(", ")}): keep one`));
   else checks.push(ok("~/.zshrc loads zdrop once", `line ${at[0] + 1}`));
   const after = lines
@@ -134,6 +142,9 @@ export const runDoctor = async (env: DoctorEnv): Promise<Check[]> => {
   checks.push(zsh == null ? fail("zsh", "zsh not found") : newer("5.8", zsh) ? fail("zsh 5.8+", `zsh ${zsh} is too old`) : ok("zsh 5.8+", zsh));
 
   checks.push(...checkZshrc(env.zshrc), ...checkEditors(env.home), checkTerminal(env.termProgram));
+
+  const loginItem = path.join(env.home, "Library", "LaunchAgents", "io.github.matan1542.zdrop.plist");
+  checks.push(ok("starts at login", fs.existsSync(loginItem) ? loginItem : "off: zdrop setup turns it on"));
 
   const status = await env.status?.().catch(() => undefined);
   if (status == null) {

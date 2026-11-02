@@ -14,17 +14,30 @@ const levels = (checks: { level: string; title: string }[]) => Object.fromEntrie
 
 describe("doctor", () => {
   it("accepts one zdrop line loaded last", () => {
-    expect(levels(checkZshrc(zshrc('source ~/.oh-my-zsh/oh-my-zsh.sh\nbindkey -e\nsource "$HOME/.zdrop/current/zsh/zdrop.plugin.zsh"\nalias g=git\n')))).toEqual({
+    const home = tempDir("home");
+    fs.mkdirSync(path.join(home, ".zdrop", "current", "zsh"), { recursive: true });
+    fs.writeFileSync(path.join(home, ".zdrop", "current", "zsh", "zdrop.plugin.zsh"), "");
+    expect(levels(checkZshrc(zshrc('source ~/.oh-my-zsh/oh-my-zsh.sh\nbindkey -e\nsource "$HOME/.zdrop/current/zsh/zdrop.plugin.zsh"\nalias g=git\n'), home))).toEqual({
       "~/.zshrc loads zdrop once": "ok",
       "zdrop loads last": "ok",
     });
   });
 
   it("flags a missing line, duplicates, plugins loaded after it and rival popups", () => {
-    expect(checkZshrc(zshrc("PS1='$ '\n"))[0]).toMatchObject({ level: "fail", title: "~/.zshrc loads zdrop" });
+    expect(checkZshrc(zshrc("PS1='$ '\n"))[0]).toMatchObject({ level: "fail", title: "~/.zshrc loads zdrop", detail: expect.stringMatching(/zdrop setup/) });
     const checks = checkZshrc(zshrc("source a/zdrop.plugin.zsh\nsource b/zdrop.plugin.zsh\nsource ~/zsh-autosuggestions/zsh-autosuggestions.zsh\neval \"$(kiro-cli init zsh post)\"\n"));
     expect(levels(checks)).toEqual({ "~/.zshrc loads zdrop once": "fail", "zdrop loads last": "warn", "no other autocomplete popup": "warn" });
     expect(checks.find((c) => c.title === "zdrop loads last")?.detail).toMatch(/3: source ~\/zsh-autosuggestions/);
+  });
+
+  it("flags a line that sources a file that is gone", () => {
+    const home = tempDir("home");
+    fs.mkdirSync(path.join(home, "zdrop", "zsh"), { recursive: true });
+    fs.writeFileSync(path.join(home, "zdrop", "zsh", "zdrop.plugin.zsh"), "");
+    expect(levels(checkZshrc(zshrc('source "$HOME/zdrop/zsh/zdrop.plugin.zsh"\n'), home))["~/.zshrc loads zdrop"]).toBeUndefined();
+    expect(levels(checkZshrc(zshrc("source ~/gone/zsh/zdrop.plugin.zsh\n"), home))["~/.zshrc loads zdrop"]).toBe("fail");
+    // unresolvable without running the shell: not judged
+    expect(levels(checkZshrc(zshrc('source "$(brew --prefix)/opt/zdrop/libexec/zsh/zdrop.plugin.zsh"\n'), home))["~/.zshrc loads zdrop"]).toBeUndefined();
   });
 
   it("checks IDE terminal suggestions, reading settings with comments", () => {

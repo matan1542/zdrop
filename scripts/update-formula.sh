@@ -37,8 +37,8 @@ class Zdrop < Formula
 
   def caveats
     <<~EOS
-      Add this line to the end of ~/.zshrc, then open a new terminal tab:
-        source "#{opt_libexec}/zsh/zdrop.plugin.zsh"
+      Turn it on (adds one line to the end of ~/.zshrc), then open a new terminal tab:
+        zdrop setup
       Check the setup any time with: zdrop doctor
     EOS
   end

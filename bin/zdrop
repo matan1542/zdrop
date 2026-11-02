@@ -20,9 +20,20 @@ node="$root/runtime/node"
 node_flags="--max-semi-space-size=1 --optimize-for-size --max-old-space-size=96"
 home=${ZDROP_HOME:-$HOME/.cache/zdrop}
 repo="matan1542/zdrop"
-# installed by Homebrew: brew owns updates and removal
+# installed by Homebrew: brew owns updates and removing the files
 brewed=0
 case "$root" in */Cellar/zdrop/*) brewed=1 ;; esac
+# the install path that survives updates: brew's opt/ link (the Cellar path is per version), or the
+# installer's current/ link
+case "$root" in
+  */Cellar/zdrop/*) stable="${root%%/Cellar/zdrop/*}/opt/zdrop/libexec" ;;
+  */versions/*) stable="${root%/versions/*}/current" ;;
+  *) stable="$root" ;;
+esac
+# the login item `zdrop setup` adds
+label="io.github.matan1542.zdrop"
+plist="$HOME/Library/LaunchAgents/$label.plist"
+xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
 case "${1:-}" in
   start)
@@ -31,6 +42,71 @@ case "${1:-}" in
     # keep daemon.out under 1 MB (the previous one is kept as .1)
     [ -f "$home/daemon.out" ] && [ "$(wc -c <"$home/daemon.out")" -gt 1048576 ] && mv -f "$home/daemon.out" "$home/daemon.out.1"
     nohup "$node" $node_flags "$root/dist/src/cli.js" serve >>"$home/daemon.out" 2>&1 </dev/null &
+    ;;
+  setup)
+    # Turns zdrop on: the source line at the end of ~/.zshrc, and a login item that starts the daemon
+    # when you log in (so the first keystroke finds it warm and commands are learned in the background).
+    # The installer runs this; Homebrew users run it once. ZDROP_NO_RC=1 / ZDROP_NO_LOGIN=1 skip a part.
+    if [ "${ZDROP_NO_RC:-0}" != 1 ]; then
+      zshrc="${ZDOTDIR:-$HOME}/.zshrc"
+      line="source \"$stable/zsh/zdrop.plugin.zsh\""
+      touch "$zshrc"
+      if grep -qxF "$line" "$zshrc"; then
+        echo "$zshrc already loads zdrop"
+      else
+        # keep the oldest backup when run twice in a second
+        backup="$zshrc.bak-zdrop-$(date +%Y%m%d%H%M%S)"
+        [ -e "$backup" ] || cp "$zshrc" "$backup"
+        # another copy of zdrop (a git checkout, an older install) would load twice: comment it out
+        if grep -q '^[^#]*zdrop\.plugin\.zsh' "$zshrc"; then
+          sed -i '' 's|^\([^#]*zdrop\.plugin\.zsh.*\)$|# \1  # replaced by zdrop setup|' "$zshrc"
+          echo "commented out an older zdrop line in $zshrc"
+        fi
+        marker="# zdrop: Kiro-style autocomplete (keep this last)"
+        grep -qxF "$marker" "$zshrc" || printf '\n%s\n' "$marker" >>"$zshrc"
+        printf '%s\n' "$line" >>"$zshrc"
+        echo "added zdrop to $zshrc (backup saved next to it)"
+      fi
+    fi
+    if [ "${ZDROP_NO_LOGIN:-0}" != 1 ]; then
+      mkdir -p "$home" "$(dirname "$plist")"
+      # launchd starts with a bare PATH: hand the daemon this shell's, for learning and for a source
+      # checkout's node. It stays up while logged in (no idle exit); a crash is restarted.
+      cat >"$plist.tmp" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$label</string>
+  <key>ProgramArguments</key>
+  <array><string>$(xml "$stable/bin/zdrop")</string><string>serve</string></array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$(xml "$PATH")</string>
+    <key>HISTFILE</key><string>$(xml "${HISTFILE:-$HOME/.zsh_history}")</string>
+    <key>ZDROP_HOME</key><string>$(xml "$home")</string>
+    <key>ZDROP_LOGIN</key><string>1</string>
+    <key>ZDROP_IDLE_MINUTES</key><string>0</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ProcessType</key><string>Background</string>
+  <key>LowPriorityIO</key><true/>
+  <key>StandardOutPath</key><string>$(xml "$home/daemon.out")</string>
+  <key>StandardErrorPath</key><string>$(xml "$home/daemon.out")</string>
+</dict>
+</plist>
+PLIST
+      mv -f "$plist.tmp" "$plist"
+      # (re)load it: an update points it at the new code and starts the new daemon now
+      launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+      if launchctl bootstrap "gui/$(id -u)" "$plist" 2>/dev/null; then
+        echo "zdrop now starts when you log in"
+      else
+        echo "zdrop starts when you log in (from the next login)"
+      fi
+    fi
+    echo "Open a new terminal tab (or run: exec zsh)."
     ;;
   version | --version | -v)
     cat "$root/VERSION" 2>/dev/null || "$node" -p "require('$root/package.json').version + ' (source)'"
@@ -56,17 +132,24 @@ case "${1:-}" in
     echo "aws, gcloud and az specs installed. Turn them on with: export ZDROP_HEAVY_SPECS=1 (in ~/.zshrc, before zdrop)"
     ;;
   uninstall)
-    [ $brewed = 1 ] && { echo "installed with Homebrew: brew uninstall zdrop, then remove the zdrop line from ~/.zshrc"; exit 0; }
-    prefix=${ZDROP_PREFIX:-$HOME/.zdrop}
     "$node" $node_flags "$root/dist/src/cli.js" stop >/dev/null 2>&1 || true
+    if [ -f "$plist" ]; then
+      launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+      rm -f "$plist"
+    fi
     zshrc="${ZDOTDIR:-$HOME}/.zshrc"
-    if [ -f "$zshrc" ] && grep -q "$prefix/current/zsh/zdrop.plugin.zsh\|^# zdrop: Kiro-style autocomplete" "$zshrc"; then
+    if [ -f "$zshrc" ] && grep -q "$stable/zsh/zdrop.plugin.zsh\|^# zdrop: Kiro-style autocomplete" "$zshrc"; then
       cp "$zshrc" "$zshrc.bak-zdrop-$(date +%Y%m%d%H%M%S)"
-      grep -v "$prefix/current/zsh/zdrop.plugin.zsh\|^# zdrop: Kiro-style autocomplete" "$zshrc" >"$zshrc.zdrop-tmp" && mv "$zshrc.zdrop-tmp" "$zshrc"
+      grep -v "$stable/zsh/zdrop.plugin.zsh\|^# zdrop: Kiro-style autocomplete" "$zshrc" >"$zshrc.zdrop-tmp" && mv "$zshrc.zdrop-tmp" "$zshrc"
       echo "removed zdrop from $zshrc (backup saved next to it)"
     fi
-    [ "$(readlink "$HOME/.local/bin/zdrop" 2>/dev/null)" = "$prefix/current/bin/zdrop" ] && rm -f "$HOME/.local/bin/zdrop"
     rm -rf "$home"
+    if [ $brewed = 1 ]; then
+      echo "zdrop is turned off. Finish with: brew uninstall zdrop"
+      exit 0
+    fi
+    prefix=${ZDROP_PREFIX:-$HOME/.zdrop}
+    [ "$(readlink "$HOME/.local/bin/zdrop" 2>/dev/null)" = "$prefix/current/bin/zdrop" ] && rm -f "$HOME/.local/bin/zdrop"
     case "$root" in "$prefix"/*) rm -rf "$prefix" ;; esac
     echo "zdrop uninstalled. Open a new terminal tab."
     ;;

@@ -89,7 +89,7 @@ export const serve = async (): Promise<void> => {
 
   const armIdleTimer = () => {
     clearTimeout(idleTimer);
-    if (sessions.size === 0) idleTimer = setTimeout(() => shutdown("idle"), limits.idleExitMs).unref();
+    if (sessions.size === 0 && limits.idleExitMs > 0) idleTimer = setTimeout(() => shutdown("idle"), limits.idleExitMs).unref();
   };
 
   const stats = () => {
@@ -242,6 +242,8 @@ export const serve = async (): Promise<void> => {
       armIdleTimer();
       log.debug({ msg: "listening", socketPath, pid: process.pid });
       if (learner != null) builder.start();
+      // started at login by `zdrop setup`'s launch agent: learn from the PATH it was given, before any shell connects
+      if (process.env.ZDROP_LOGIN === "1" && process.env.PATH) builder.setEnv({ path: process.env.PATH, histfile: process.env.HISTFILE || undefined });
       startUpdateCheck();
       resolve();
     });

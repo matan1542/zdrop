@@ -25,7 +25,7 @@ export const limits = {
   /** RSS above which the daemon exits so it can be restarted fresh. */
   rssLimitBytes: envInt("ZDROP_RSS_LIMIT_MB", 120) * 1024 * 1024,
   rssCheckIntervalMs: envInt("ZDROP_RSS_CHECK_SECONDS", 60) * 1000,
-  /** Exit when no shell has been connected for this long. */
+  /** Exit when no shell has been connected for this long (0: never, as when started at login). */
   idleExitMs: envInt("ZDROP_IDLE_MINUTES", 30) * 60_000,
 };
 

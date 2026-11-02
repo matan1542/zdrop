@@ -34,35 +34,41 @@ Then open a new terminal tab (run `zdrop doctor` if the popup doesn't show). The
 - downloads the release for your Mac (about 25 MB) and verifies its SHA-256 checksum
 - installs into `~/.zdrop`. The release bundles its own Node.js, so nothing else is needed and nvm or
   fnm version switching can't break it.
-- adds one `source` line to the end of `~/.zshrc` (backing it up first), and comments out an older
-  zdrop line if there is one
+- runs `zdrop setup`, which:
+  - adds one `source` line to the end of `~/.zshrc` (backing it up first), and comments out an older
+    zdrop line if there is one
+  - adds a login item, so the daemon starts when you log in: the first keystroke finds it warm, and
+    commands are learned in the background before you open a terminal
 - links `zdrop` into `~/.local/bin` if that directory exists
 
 ```sh
+zdrop setup              # turn zdrop on: the ~/.zshrc line and the login item (safe to re-run)
 zdrop doctor             # checks the setup, with a fix for each problem
 zdrop extras install     # the full aws, gcloud and az specs (then set ZDROP_HEAVY_SPECS=1)
 zdrop update             # latest release (or: zdrop update 0.2.0)
-zdrop uninstall          # removes ~/.zdrop, the ~/.zshrc line and the cache
+zdrop uninstall          # removes ~/.zdrop, the ~/.zshrc line, the login item and the cache
 zdrop version
 ```
 
 ### With Homebrew
 
 ```sh
-brew install matan1542/tap/zdrop
+brew install matan1542/tap/zdrop && zdrop setup
 ```
 
-Then add the line Homebrew prints to the end of `~/.zshrc`:
-`source "$(brew --prefix)/opt/zdrop/libexec/zsh/zdrop.plugin.zsh"`. Update with `brew upgrade zdrop`.
+Homebrew doesn't let a formula edit files in your home folder, so `zdrop setup` turns zdrop on: it
+adds the `~/.zshrc` line and the login item. Update with `brew upgrade zdrop`. To remove it, run
+`zdrop uninstall`, then `brew uninstall zdrop`.
 
 ### Installer options
 
 Installer options: `ZDROP_VERSION=0.2.0` installs a specific release, `ZDROP_PREFIX=<dir>` sets the
-install directory, and `ZDROP_NO_RC=1` leaves `~/.zshrc` alone.
+install directory, `ZDROP_NO_RC=1` leaves `~/.zshrc` alone, and `ZDROP_NO_LOGIN=1` skips the login
+item (these two work for `zdrop setup` too).
 
 Keep the `source` line **last** in `~/.zshrc`, after oh-my-zsh, zsh-autosuggestions, fzf-tab and so
-on, so zdrop's key bindings win. The daemon starts by itself on the first keystroke and stops after 30
-idle minutes.
+on, so zdrop's key bindings win. With the login item, the daemon starts when you log in and stays up
+(about 60 MB). Without it, the daemon starts on the first keystroke and stops after 30 idle minutes.
 
 ### From source
 

@@ -32,7 +32,7 @@ jobs:
       - name: Smoke-test the arm64 tarball
         run: |
           home=$(mktemp -d)
-          env -i HOME="$home" PATH=/usr/bin:/bin ZDROP_NO_RC=1 ZDROP_TARBALL="$PWD/release/zdrop-${GITHUB_REF_NAME#v}-darwin-arm64.tar.xz" sh release/install.sh
+          env -i HOME="$home" PATH=/usr/bin:/bin ZDROP_NO_RC=1 ZDROP_NO_LOGIN=1 ZDROP_TARBALL="$PWD/release/zdrop-${GITHUB_REF_NAME#v}-darwin-arm64.tar.xz" sh release/install.sh
           env -i HOME="$home" PATH=/usr/bin:/bin "$home/.zdrop/current/bin/zdrop" query "git ch" | grep -q checkout
       - name: Publish
         env:

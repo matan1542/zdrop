@@ -1,6 +1,6 @@
 {
   "name": "zdrop",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Kiro-style IDE dropdown autocomplete for zsh, backed by Fig specs",
   "type": "module",
@@ -14,6 +14,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "e2e": "scripts/e2e.sh",
+    "setup-test": "scripts/setup-test.sh",
     "soak": "node scripts/soak.mjs",
     "budget": "node scripts/learn-budget.mjs"
   },
