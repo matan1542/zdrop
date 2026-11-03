@@ -23,7 +23,12 @@ jobs:
         run: "! grep -q __archiveUrl yarn.lock"
       - name: zsh, tmux and bubblewrap (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -yq zsh tmux bubblewrap man-db
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq zsh tmux bubblewrap man-db
+          # Ubuntu 24.04 restricts unprivileged user namespaces (AppArmor), which bubblewrap needs;
+          # lift it so the sandbox is tested too
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          bwrap --ro-bind / / --dev /dev --unshare-net --unshare-ipc --unshare-pid -- /bin/true && echo "bubblewrap works"
       - name: tmux (macOS)
         if: runner.os == 'macOS'
         run: brew install tmux

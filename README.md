@@ -21,21 +21,23 @@ Kiro CLI–style dropdown autocomplete for zsh: an IDE-like popup while you type
 
 ## Install
 
-On macOS (Apple silicon or Intel), with zsh:
+On macOS (Apple silicon or Intel) or Linux (x64 or arm64, glibc 2.28+: Ubuntu 20.04, Debian 10,
+RHEL 8, Fedora and later), with zsh:
 
 ```sh
 curl -fsSL https://github.com/matan1542/zdrop/releases/latest/download/install.sh | sh
 ```
 
 Then open a new terminal tab (run `zdrop doctor` if the popup doesn't show). The installer:
-- downloads the release for your Mac (about 25 MB) and verifies its SHA-256 checksum
+- downloads the release for your machine (about 25 MB) and verifies its SHA-256 checksum
 - installs into `~/.zdrop`. The release bundles its own Node.js, so nothing else is needed and nvm or
   fnm version switching can't break it.
 - runs `zdrop setup`, which:
   - adds one `source` line to the end of `~/.zshrc` (backing it up first), and comments out an older
     zdrop line if there is one
-  - adds a login item, so the daemon starts when you log in: the first keystroke finds it warm, and
-    commands are learned in the background before you open a terminal
+  - adds a login item (a LaunchAgent on macOS, a systemd user service on Linux), so the daemon starts
+    when you log in: the first keystroke finds it warm, and commands are learned in the background
+    before you open a terminal
 - links `zdrop` into `~/.local/bin` if that directory exists
 
 ```sh
@@ -53,9 +55,14 @@ zdrop version
 brew install matan1542/tap/zdrop && zdrop setup
 ```
 
-Homebrew doesn't let a formula edit files in your home folder, so `zdrop setup` turns zdrop on: it
+This works with Homebrew on Linux too. Homebrew doesn't let a formula edit files in your home folder, so `zdrop setup` turns zdrop on: it
 adds the `~/.zshrc` line and the login item. Update with `brew upgrade zdrop`. To remove it, run
 `zdrop uninstall`, then `brew uninstall zdrop`.
+
+On Linux, install **bubblewrap** (`apt install bubblewrap`, `dnf install bubblewrap`) so commands can be
+learned from their `--help` in a sandbox, in the background too. Without it, only commands you type are
+probed. `zdrop doctor` says whether the sandbox works. Alpine (musl) isn't supported, because the
+bundled Node.js needs glibc.
 
 ### Installer options
 

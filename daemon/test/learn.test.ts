@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runQuery, type QueryResult } from "../src/engine.js";
 import { requestEnv } from "../src/learn/context.js";
 import { gate } from "../src/learn/gate.js";
+import { sandboxAvailable } from "../src/learn/sandbox.js";
 import { LearnedStore } from "../src/learn/store.js";
 import { initRuntime, type Runtime } from "../src/setup.js";
 import { fakeCli, invocations, tempDir, waitFor } from "./helpers.js";
@@ -173,12 +174,13 @@ describe("safety", () => {
     expect(results.at(-1)!.items).toEqual([]);
     expect(Date.now() - started).toBeLessThan(6000);
     expect((await new LearnedStore().read("hangcli"))?.status).toBe("timeout");
-    expect(execFileSync("/bin/sh", ["-c", `pgrep -f '${hang}' || true`]).toString().trim()).toBe("");
+    // pgrep itself, not through sh: Linux's pgrep would match the sh whose command line has the pattern
+    expect(spawnSync("pgrep", ["-f", hang]).stdout.toString().trim()).toBe("");
     await ask("hangcli ");
     expect(invocations(hang)).toHaveLength(1);
   });
 
-  it("runs --help in a sandbox: no writes outside, no network, no secrets", async () => {
+  it.runIf(sandboxAvailable())("runs --help in a sandbox: no writes outside, no network, no secrets", async () => {
     process.env.ZDROP_TEST_SECRET = "s3cret-value";
     const results = await ask("evilcli ");
     const learned = names(results.at(-1)!);
@@ -197,10 +199,14 @@ describe("safety", () => {
     fs.writeFileSync(launcher, '#!/bin/bash\nJAVA_HOME=/x exec /opt/app/run "$@"\n', { mode: 0o755 });
     const denied = fakeCli(bin, "shutdown", rootHelp);
 
-    expect((await gate("fakecli", cli, false)).action).toBe("probe");
+    // without a sandbox, only commands the user typed are run
+    expect((await gate("fakecli", cli, false)).action).toBe(sandboxAvailable() ? "probe" : "man");
+    expect((await gate("fakecli", cli, true)).action).toBe("probe");
     expect((await gate("quiet", quiet, true)).action).toBe("man");
     expect((await gate("guiapp", launcher, true)).action).toBe("man");
     expect((await gate("shutdown", denied, true)).action).toBe("man");
+    if (process.platform !== "darwin") return;
+    // macOS system binaries
     expect((await gate("crontab", "/usr/bin/crontab", true)).reason).toMatch(/setuid/);
     expect((await gate("java", "/usr/bin/java", true)).reason).toMatch(/stub/);
     expect((await gate("zip", "/usr/bin/zip", false)).action).toBe("man");

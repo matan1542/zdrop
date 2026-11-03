@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { learnConfig } from "../src/learn/config.js";
 import { readHistory } from "../src/learn/history.js";
+import { sandboxAvailable } from "../src/learn/sandbox.js";
 import { LearnedStore } from "../src/learn/store.js";
 import { BatchExit, runBatch } from "../src/learn/worker.js";
 import { fakeCli, invocations, tempDir } from "./helpers.js";
@@ -40,7 +41,8 @@ describe("background learning (learn-batch)", () => {
     expect(clis.flatMap(invocations)).toEqual([]);
   });
 
-  it("learns in batches, most-used commands first", async () => {
+  // background probes run only in a sandbox
+  it.runIf(sandboxAvailable())("learns in batches, most-used commands first", async () => {
     learnConfig.batchSize = 2;
     expect(await runBatch()).toBe(BatchExit.More);
     // delta and gamma are in the history, so they go first
@@ -49,7 +51,7 @@ describe("background learning (learn-batch)", () => {
     expect(invocations(clis[0])).toEqual([]);
   });
 
-  it("finishes the rest, then the history's favourite subcommand", async () => {
+  it.runIf(sandboxAvailable())("finishes the rest, then the history's favourite subcommand", async () => {
     learnConfig.batchSize = 100;
     expect(await runBatch()).toBe(BatchExit.Done);
     expect(clis.map((c) => invocations(c)[0])).toEqual(["--help", "--help", "--help", "--help"]);
@@ -58,13 +60,13 @@ describe("background learning (learn-batch)", () => {
     expect(Object.keys(delta!.nodes)).toEqual(["", "run", "stop"]);
   });
 
-  it("probes nothing on a restart when nothing changed", async () => {
+  it.runIf(sandboxAvailable())("probes nothing on a restart when nothing changed", async () => {
     const before = clis.flatMap(invocations).length;
     expect(await runBatch()).toBe(BatchExit.Done);
     expect(clis.flatMap(invocations)).toHaveLength(before);
   });
 
-  it("stops at the daily budget", async () => {
+  it.runIf(sandboxAvailable())("stops at the daily budget", async () => {
     fs.appendFileSync(clis[0], "# changed\n");
     fs.utimesSync(clis[0], new Date(), new Date(Date.now() + 5000));
     const store = new LearnedStore();
