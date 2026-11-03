@@ -61,8 +61,9 @@ adds the `~/.zshrc` line and the login item. Update with `brew upgrade zdrop`. T
 
 On Linux, install **bubblewrap** (`apt install bubblewrap`, `dnf install bubblewrap`) so commands can be
 learned from their `--help` in a sandbox, in the background too. Without it, only commands you type are
-probed. `zdrop doctor` says whether the sandbox works. Alpine (musl) isn't supported, because the
-bundled Node.js needs glibc.
+probed. `zdrop doctor` says whether the sandbox works: some distributions (Ubuntu 24.04 among them)
+restrict the unprivileged user namespaces bubblewrap needs, and then zdrop also probes only what you
+type. Alpine (musl) isn't supported, because the bundled Node.js needs glibc.
 
 ### Installer options
 
