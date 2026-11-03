@@ -55,11 +55,11 @@ describe("help parser: captured help", () => {
     expect(node.args).toEqual([{ name: "PROMPT", optional: true }]);
   });
 
-  it("clap short help with option aliases (kiro-cli)", () => {
-    const node = parse("kiro-cli.txt", "kiro-cli");
+  it("clap short help with option aliases (acme-cli)", () => {
+    const node = parse("acme-cli.txt", "acme-cli");
     expect(node.subcommands).toHaveLength(16);
     expect(opt(node.options, "--legacy-ui")?.names).toEqual(["--legacy-ui", "--classic"]);
-    expect(opt(node.options, "--agent")?.arg?.name).toBe("AGENT");
+    expect(opt(node.options, "--project")?.arg?.name).toBe("PROJECT");
     expect(opt(node.options, "--verbose")?.arg).toBeUndefined();
   });
 
@@ -167,7 +167,7 @@ describe("help parser: library formats", () => {
   it("rejects output that is not help", () => {
     expect(looksLikeHelp(parse("notahelp.txt", "x"))).toBe(false);
     expect(looksLikeHelp(parseHelp("", ["x"]))).toBe(false);
-    expect(looksLikeHelp(parse("kiro-cli.txt", "kiro-cli"))).toBe(true);
+    expect(looksLikeHelp(parse("acme-cli.txt", "acme-cli"))).toBe(true);
   });
 
   it("strips ANSI colors and overstrike", () => {

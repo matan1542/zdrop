@@ -1,15 +1,21 @@
 # zdrop
 
-Kiro CLI–style dropdown autocomplete for zsh: an IDE-like popup while you type `yarn `, `cd `,
-`git checkout `, … backed by the 700+ open-source [Fig completion specs](https://github.com/withfig/autocomplete).
+IDE-style dropdown autocomplete for zsh that knows every command on your PATH: a popup while you type
+`yarn `, `cd `, `git checkout `, … backed by the 700+ open-source
+[Fig completion specs](https://github.com/withfig/autocomplete), and for everything else, learned from
+its `--help`. Free, open source, no account, macOS and Linux.
+
+```sh
+curl -fsSL https://github.com/matan1542/zdrop/releases/latest/download/install.sh | sh
+```
 
 ![zdrop: git subcommands and branches, yarn scripts, a CLI learned from its --help, and a typo fix](docs/demo.gif)
 
 - Runs **inside the terminal**: no PTY wrapper, no desktop overlay window, no Accessibility permission.
-  Works in Terminal.app, iTerm2 and VS Code / Cursor / Kiro terminals, next to zsh-autosuggestions.
-- **Kiro's look and behaviour**, taken from Amazon Q's open-source UI (which Kiro inherited): blue
-  selected row, highlighted matches, dimmed argument hints, a docs panel beside the list, ghost text,
-  and loading states (marching dots, or a spinner while static results show).
+  Works in Terminal.app, iTerm2 and editor terminals (VS Code, Cursor, …), next to zsh-autosuggestions.
+- **Look and behaviour**: blue selected row, highlighted matches, dimmed argument hints, a docs panel
+  beside the list, ghost text, and loading states (marching dots, or a spinner while static results
+  show).
 - **Knows your shell**: your aliases (`g ch` completes like `git ch`) and functions, what you run
   (ranking, and values you typed before, shared across subcommands), the folders you visit, and a
   fix for a mistyped command (`gti status` → `git status`).
@@ -18,6 +24,18 @@ Kiro CLI–style dropdown autocomplete for zsh: an IDE-like popup while you type
   per-tool setup (see [Learned commands](#learned-commands)).
 - **Bounded memory**: one shared daemon for every shell, about 55 MB idle and about 80 MB under heavy use,
   with hard caps and a self-restart watchdog (see [Memory](#memory)).
+
+### How it compares
+
+|  | zdrop | [inshellisense](https://github.com/microsoft/inshellisense) | [zsh-autocomplete](https://github.com/marlonrichert/zsh-autocomplete) | [fzf-tab](https://github.com/Aloxaf/fzf-tab) |
+|---|---|---|---|---|
+| Suggestions | as you type | as you type | as you type | when you press Tab |
+| Where they come from | Fig specs, plus `--help` and man pages of any other command | Fig specs | zsh's completion functions | zsh's completion functions |
+| Shells | zsh | bash, zsh, fish, PowerShell and more | zsh | zsh |
+| How it runs | zsh plugin and one shared background process | wraps your shell in a pseudo-terminal | pure zsh | pure zsh |
+
+[zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions) (grey inline text from history)
+does a different job, and works alongside zdrop.
 
 ## Install
 
@@ -87,11 +105,11 @@ echo 'source ~/zdrop/zsh/zdrop.plugin.zsh' >> ~/.zshrc
 
 **Turn off other popups** so two don't compete:
 - VS Code / Cursor: set `"terminal.integrated.suggest.enabled": false`.
-- Kiro CLI: turn off its autocomplete, or stop launching shells through `kiro-cli-term`.
+- Kiro CLI / Amazon Q: turn off its autocomplete.
 
 ## Keys (while the popup is open)
 
-Like Kiro, the first suggestion is highlighted in blue as soon as the popup opens. The rest of the
+The first suggestion is highlighted in blue as soon as the popup opens. The rest of the
 highlighted suggestion is previewed after the cursor as dimmed ghost text.
 
 | Key | Action |
@@ -138,7 +156,7 @@ plugin; variables marked "daemon" take effect when the daemon next starts.
 
 | Variable | Default | |
 |---|---|---|
-| `ZDROP_THEME` | `dark` | `dark` or `light` (Kiro's colour tokens) |
+| `ZDROP_THEME` | `dark` | `dark` or `light` colour tokens |
 | `ZDROP_ACCENT` | `1E5AC7` | colour of the highlighted row (`rrggbb`) |
 | `ZDROP_ICONS` | `unicode` | `unicode`, `nerd` (needs a Nerd Font) or `none` |
 | `ZDROP_WIDTH` | `44` | popup width in cells |
@@ -289,8 +307,7 @@ A command that parses badly can always be overridden by dropping a Fig spec with
 
 ## Memory
 
-Kiro's own CLI has had memory leaks: kiro-cli-chat grew about 50 MB/min, and kiro-cli-term held up to
-1.5 GB per shell. zdrop is built so it cannot grow without limit:
+zdrop is built so it cannot grow without limit:
 
 - **One daemon for all shells.**
   - A second copy refuses to start.

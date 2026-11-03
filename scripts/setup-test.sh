@@ -23,8 +23,20 @@ check "brew: sources the opt/ path, not the Cellar" "grep -qxF 'source \"$b/opt/
 check "brew: running setup twice adds one line" "[ \$(grep -c '^source.*zdrop.plugin.zsh' '$b/home/.zshrc') = 1 ]"
 check "brew: an older zdrop line is commented out" "grep -q '^# source ~/old/zdrop' '$b/home/.zshrc'"
 check "brew: other lines kept, backup taken" "grep -qx 'export X=1' '$b/home/.zshrc' && ls -a '$b/home' | grep -q bak-zdrop"
+check "brew: one marker comment" "[ \$(grep -c 'keep this last' '$b/home/.zshrc') = 1 ]"
 run "$b/home" "$b/bin/zdrop" uninstall
-check "brew: uninstall removes the line and the marker" "! grep -q 'opt/zdrop\\|Kiro-style' '$b/home/.zshrc'"
+check "brew: uninstall removes the line and the marker" "! grep -q 'opt/zdrop\\|keep this last' '$b/home/.zshrc'"
+
+# a ~/.zshrc set up by a release before 0.4.1, whose marker had different wording
+o=$tmp/old
+mkdir -p "$o"
+printf 'export X=1\n\n# zdrop: Kiro-style autocomplete (keep this last)\nsource "%s/opt/zdrop/libexec/zsh/zdrop.plugin.zsh"\n' "$b" >"$o/.zshrc"
+run "$o" "$b/bin/zdrop" setup
+check "older marker: setup rewords it" "grep -qx '# zdrop: dropdown autocomplete (keep this last)' '$o/.zshrc' && [ \$(grep -c 'keep this last' '$o/.zshrc') = 1 ]"
+check "older marker: the source line is kept once" "[ \$(grep -c '^source.*zdrop.plugin.zsh' '$o/.zshrc') = 1 ]"
+printf '\n# zdrop: Kiro-style autocomplete (keep this last)\n' >>"$o/.zshrc"
+run "$o" "$b/bin/zdrop" uninstall
+check "older marker: uninstall removes every wording" "! grep -q 'keep this last\\|zdrop.plugin' '$o/.zshrc' && grep -qx 'export X=1' '$o/.zshrc'"
 
 # installer: ~/.local/bin/zdrop -> ~/.zdrop/current/bin/zdrop, current -> versions/<v>
 c=$tmp/curl/home

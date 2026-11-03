@@ -1,4 +1,4 @@
-# zdrop.plugin.zsh — Kiro-style dropdown autocomplete for zsh.
+# zdrop.plugin.zsh — IDE-style dropdown autocomplete for zsh.
 #
 # The shell side stays small and never blocks typing: every keystroke that changes the text before
 # the cursor sends one line to a shared daemon over a unix socket, and replies are handled by a
@@ -201,7 +201,7 @@ _zdrop_take_result() {
   (( _zdrop_notice_done )) || _zdrop_notice=$head[7]
   _zdrop_typed_len=$_zdrop_replace_len
   _zdrop_items=("${(@)recs[2,-1]}")
-  # Kiro: the first row is highlighted, unless the user had moved to an item that is still there
+  # the first row is highlighted, unless the user had moved to an item that is still there
   _zdrop_sel=1 _zdrop_top=1
   if [[ -n $selected ]]; then
     local -i i
@@ -281,7 +281,7 @@ _zdrop_pre_redraw() {
   if (( _zdrop_inserting )); then
     _zdrop_inserting=0
   else
-    # Kiro: a paste, history jump or word deletion hides the popup until the next keypress
+    # a paste, history jump or word deletion hides the popup until the next keypress
     local -i delta=$(( ${#LBUFFER} - ${#prev} ))
     if (( delta > 1 || delta < -1 )) || [[ $LBUFFER != ${prev}* && $prev != ${LBUFFER}* ]]; then
       _zdrop_hide 0

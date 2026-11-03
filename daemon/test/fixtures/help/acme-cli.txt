@@ -1,0 +1,36 @@
+The Acme CLI
+
+Usage: acme-cli [OPTIONS] [COMMAND]
+
+Commands:
+  project       Manage projects
+  run           Run a task in your terminal
+  login         Log in to Acme
+  logout        Log out of Acme
+  whoami        Print info about the current login session
+  team          Show the team associated with this user
+  settings      Customize appearance & behavior
+  diagnostic    Run diagnostic tests
+  issue         Create a new issue
+  plugins       Install, list and remove plugins
+  cache         Inspect or clear the local cache
+  deploy        Deploy the current project
+  update        Check for and install updates
+  integrations  Manage system integrations
+  serve         Start a persistent local server
+  help          Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --verbose...              Increase logging verbosity
+      --project <PROJECT>       Open the given project, shorthand for run --project
+      --tui                     Use the full-screen interface
+      --legacy-ui               Use the old line-based interface [aliases: --classic]
+      --beta                    Use the beta engine
+      --stable                  Use the stable engine (the default)
+  -r, --resume                  Resume the most recent task from this directory
+      --resume-id <TASK_ID>     Resume a specific task by ID
+      --resume-picker           Interactively select a task to resume from this directory [aliases: --list]
+      --remote                  Run this task on a remote runner, shorthand for run --remote
+      --repo <REPO>             Repository to use for a remote task, shorthand for run --repo
+  -h, --help                    Print help
+  -V, --version                 Print version

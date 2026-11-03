@@ -81,7 +81,7 @@ const toSuggestion = (suggestion: Fig.Suggestion, name?: string, type?: Fig.Sugg
   };
 };
 
-// zdrop: Kiro shows a subcommand's/option's arguments dimmed after its name
+// zdrop: show a subcommand's/option's arguments dimmed after its name
 const getArgsLabel = (suggestion: object): string | undefined => {
   const raw = (suggestion as { args?: Fig.SingleOrArray<Fig.Arg> }).args;
   const args = raw instanceof Array ? raw : raw != null ? [raw] : [];

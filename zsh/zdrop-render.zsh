@@ -1,10 +1,10 @@
-# zdrop-render.zsh — draws the Kiro-style popup below the prompt with raw ANSI.
+# zdrop-render.zsh — draws the dropdown popup below the prompt with raw ANSI.
 #
 # Technique (from nerv-sh/nerv): `zle -R "" <blank rows>` makes zle reserve screen rows below the
 # command line (and scroll when the prompt is at the bottom), then one printf paints the coloured
 # card over those blanks between a cursor save (\e7) and restore (\e8). Only relative moves are used.
 #
-# Look (from Amazon Q's open autocomplete UI, which Kiro inherited): solid card, blue selected row,
+# Look (colour tokens adapted from aws/amazon-q-developer-cli-autocomplete): solid card, blue selected row,
 # matched characters on a highlight background, common prefix underlined, dimmed args, and an italic
 # description bar under a separator. Loading: three marching dots, or a spinner in the description bar.
 

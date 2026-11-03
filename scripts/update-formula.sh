@@ -16,7 +16,7 @@ linux_intel=$(sha linux-x64)
 mkdir -p "$tap/Formula"
 cat >"$tap/Formula/zdrop.rb" <<RUBY
 class Zdrop < Formula
-  desc "Kiro-style dropdown autocomplete for zsh, for every command on your PATH"
+  desc "IDE-style dropdown autocomplete for zsh, for every command on your PATH"
   homepage "https://github.com/$repo"
   version "$version"
   license "MIT"

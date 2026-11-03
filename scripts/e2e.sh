@@ -58,8 +58,8 @@ text "git ch";            check "subcommands appear while typing" "› checkout"
                           check "an update notice shows in the first popup" "zdrop 9.9.9 available"
                           check "ghost text previews the first suggestion" '^\$ git checkout'
                           check "no run-as-typed row" "Immediately execute" absent
-if $tmux_ capture-pane -t t -p -e | grep '48;2;30;90;199m' | sed 's/\x1b\[[0-9;]*m//g' | grep -q 'checkout'; then echo "ok   the first row is highlighted (Kiro blue)"
-else echo "FAIL the first row is highlighted (Kiro blue)"; failures=$((failures + 1)); fi
+if $tmux_ capture-pane -t t -p -e | grep '48;2;30;90;199m' | sed 's/\x1b\[[0-9;]*m//g' | grep -q 'checkout'; then echo "ok   the first row is highlighted (accent blue)"
+else echo "FAIL the first row is highlighted (accent blue)"; failures=$((failures + 1)); fi
 send Down;                check "Down moves the selection (description follows)" "Apply the changes"
 
 # flicker guard: a keypress must reach the terminal as one synchronized frame (DEC 2026), with

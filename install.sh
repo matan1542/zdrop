@@ -1,5 +1,5 @@
 #!/bin/sh
-# zdrop installer: Kiro-style dropdown autocomplete for zsh, on macOS and Linux (glibc).
+# zdrop installer: IDE-style dropdown autocomplete for zsh, on macOS and Linux (glibc).
 #
 #   curl -fsSL https://github.com/matan1542/zdrop/releases/latest/download/install.sh | sh
 #

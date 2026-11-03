@@ -125,6 +125,10 @@ login_remove() {
   fi
 }
 
+# the comment setup writes above its line in ~/.zshrc, and a pattern for every wording it has had
+marker="# zdrop: dropdown autocomplete (keep this last)"
+markers='^# zdrop: [A-Za-z -]* autocomplete (keep this last)$'
+
 case "${1:-}" in
   start)
     # detached from the terminal; the daemon itself refuses to start twice
@@ -141,6 +145,10 @@ case "${1:-}" in
       zshrc="${ZDOTDIR:-$HOME}/.zshrc"
       line="source \"$stable/zsh/zdrop.plugin.zsh\""
       touch "$zshrc"
+      # an older release wrote the marker with different wording: bring it up to date
+      if grep -q "$markers" "$zshrc" && ! grep -qxF "$marker" "$zshrc"; then
+        sed "s|$markers|$marker|" "$zshrc" >"$zshrc.zdrop-tmp" && rewrite "$zshrc"
+      fi
       if grep -qxF "$line" "$zshrc"; then
         echo "$zshrc already loads zdrop"
       else
@@ -152,7 +160,6 @@ case "${1:-}" in
           sed 's|^\([^#]*zdrop\.plugin\.zsh.*\)$|# \1  # replaced by zdrop setup|' "$zshrc" >"$zshrc.zdrop-tmp" && rewrite "$zshrc"
           echo "commented out an older zdrop line in $zshrc"
         fi
-        marker="# zdrop: Kiro-style autocomplete (keep this last)"
         grep -qxF "$marker" "$zshrc" || printf '\n%s\n' "$marker" >>"$zshrc"
         printf '%s\n' "$line" >>"$zshrc"
         echo "added zdrop to $zshrc (backup saved next to it)"
@@ -188,9 +195,9 @@ case "${1:-}" in
     "$node" $node_flags "$root/dist/src/cli.js" stop >/dev/null 2>&1 || true
     login_remove
     zshrc="${ZDOTDIR:-$HOME}/.zshrc"
-    if [ -f "$zshrc" ] && grep -q "$stable/zsh/zdrop.plugin.zsh\|^# zdrop: Kiro-style autocomplete" "$zshrc"; then
+    if [ -f "$zshrc" ] && grep -q "$stable/zsh/zdrop.plugin.zsh\|$markers" "$zshrc"; then
       cp "$zshrc" "$zshrc.bak-zdrop-$(date +%Y%m%d%H%M%S)"
-      grep -v "$stable/zsh/zdrop.plugin.zsh\|^# zdrop: Kiro-style autocomplete" "$zshrc" >"$zshrc.zdrop-tmp"; rewrite "$zshrc"
+      grep -v "$stable/zsh/zdrop.plugin.zsh\|$markers" "$zshrc" >"$zshrc.zdrop-tmp"; rewrite "$zshrc"
       echo "removed zdrop from $zshrc (backup saved next to it)"
     fi
     rm -rf "$home"
