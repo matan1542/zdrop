@@ -30,48 +30,24 @@ case "$root" in
   */versions/*) stable="${root%/versions/*}/current" ;;
   *) stable="$root" ;;
 esac
-# the login item `zdrop setup` adds
+# the login item `zdrop setup` adds: a LaunchAgent on macOS, a systemd user unit on Linux
 label="io.github.matan1542.zdrop"
 plist="$HOME/Library/LaunchAgents/$label.plist"
+unit="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/zdrop.service"
 xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+# a value inside a systemd Environment="..." assignment
+unit_value() { printf '%s' "$1" | sed -e 's/%/%%/g' -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+sha256_check() { if command -v shasum >/dev/null; then shasum -a 256 -c "$1"; else sha256sum -c "$1"; fi; }
+# rewrite a file in place through a symlink (a dotfiles-managed ~/.zshrc stays a symlink)
+rewrite() { cat "$1.zdrop-tmp" >"$1" && rm -f "$1.zdrop-tmp"; }
 
-case "${1:-}" in
-  start)
-    # detached from the terminal; the daemon itself refuses to start twice
-    mkdir -p "$home"
-    # keep daemon.out under 1 MB (the previous one is kept as .1)
-    [ -f "$home/daemon.out" ] && [ "$(wc -c <"$home/daemon.out")" -gt 1048576 ] && mv -f "$home/daemon.out" "$home/daemon.out.1"
-    nohup "$node" $node_flags "$root/dist/src/cli.js" serve >>"$home/daemon.out" 2>&1 </dev/null &
-    ;;
-  setup)
-    # Turns zdrop on: the source line at the end of ~/.zshrc, and a login item that starts the daemon
-    # when you log in (so the first keystroke finds it warm and commands are learned in the background).
-    # The installer runs this; Homebrew users run it once. ZDROP_NO_RC=1 / ZDROP_NO_LOGIN=1 skip a part.
-    if [ "${ZDROP_NO_RC:-0}" != 1 ]; then
-      zshrc="${ZDOTDIR:-$HOME}/.zshrc"
-      line="source \"$stable/zsh/zdrop.plugin.zsh\""
-      touch "$zshrc"
-      if grep -qxF "$line" "$zshrc"; then
-        echo "$zshrc already loads zdrop"
-      else
-        # keep the oldest backup when run twice in a second
-        backup="$zshrc.bak-zdrop-$(date +%Y%m%d%H%M%S)"
-        [ -e "$backup" ] || cp "$zshrc" "$backup"
-        # another copy of zdrop (a git checkout, an older install) would load twice: comment it out
-        if grep -q '^[^#]*zdrop\.plugin\.zsh' "$zshrc"; then
-          sed -i '' 's|^\([^#]*zdrop\.plugin\.zsh.*\)$|# \1  # replaced by zdrop setup|' "$zshrc"
-          echo "commented out an older zdrop line in $zshrc"
-        fi
-        marker="# zdrop: Kiro-style autocomplete (keep this last)"
-        grep -qxF "$marker" "$zshrc" || printf '\n%s\n' "$marker" >>"$zshrc"
-        printf '%s\n' "$line" >>"$zshrc"
-        echo "added zdrop to $zshrc (backup saved next to it)"
-      fi
-    fi
-    if [ "${ZDROP_NO_LOGIN:-0}" != 1 ]; then
-      mkdir -p "$home" "$(dirname "$plist")"
-      # launchd starts with a bare PATH: hand the daemon this shell's, for learning and for a source
-      # checkout's node. It stays up while logged in (no idle exit); a crash is restarted.
+# The daemon starts at login and stays up while logged in (no idle exit); a crash is restarted.
+# It is handed this shell's PATH: the login environment's is bare, and a source checkout needs node.
+login_install() {
+  mkdir -p "$home"
+  case "$(uname -s)" in
+    Darwin)
+      mkdir -p "$(dirname "$plist")"
       cat >"$plist.tmp" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -105,7 +81,84 @@ PLIST
       else
         echo "zdrop starts when you log in (from the next login)"
       fi
+      ;;
+    *)
+      if ! command -v systemctl >/dev/null || ! systemctl --user show-environment >/dev/null 2>&1; then
+        echo "no systemd user session: the daemon starts on your first keystroke instead"
+        return 0
+      fi
+      mkdir -p "$(dirname "$unit")"
+      cat >"$unit.tmp" <<UNIT
+[Unit]
+Description=zdrop autocomplete daemon
+
+[Service]
+ExecStart="$(unit_value "$stable/bin/zdrop")" serve
+Environment="PATH=$(unit_value "$PATH")" "HISTFILE=$(unit_value "${HISTFILE:-$HOME/.zsh_history}")" "ZDROP_HOME=$(unit_value "$home")" ZDROP_LOGIN=1 ZDROP_IDLE_MINUTES=0
+Restart=on-failure
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target
+UNIT
+      mv -f "$unit.tmp" "$unit"
+      systemctl --user daemon-reload
+      if systemctl --user enable zdrop.service >/dev/null 2>&1 && systemctl --user restart zdrop.service; then
+        echo "zdrop now starts when you log in"
+      else
+        echo "could not enable $unit: the daemon starts on your first keystroke instead"
+      fi
+      ;;
+  esac
+}
+
+login_remove() {
+  if [ -f "$plist" ]; then
+    launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+    rm -f "$plist"
+  fi
+  if [ -f "$unit" ]; then
+    systemctl --user disable --now zdrop.service >/dev/null 2>&1 || true
+    rm -f "$unit"
+    systemctl --user daemon-reload 2>/dev/null || true
+  fi
+}
+
+case "${1:-}" in
+  start)
+    # detached from the terminal; the daemon itself refuses to start twice
+    mkdir -p "$home"
+    # keep daemon.out under 1 MB (the previous one is kept as .1)
+    [ -f "$home/daemon.out" ] && [ "$(wc -c <"$home/daemon.out")" -gt 1048576 ] && mv -f "$home/daemon.out" "$home/daemon.out.1"
+    nohup "$node" $node_flags "$root/dist/src/cli.js" serve >>"$home/daemon.out" 2>&1 </dev/null &
+    ;;
+  setup)
+    # Turns zdrop on: the source line at the end of ~/.zshrc, and a login item that starts the daemon
+    # when you log in (so the first keystroke finds it warm and commands are learned in the background).
+    # The installer runs this; Homebrew users run it once. ZDROP_NO_RC=1 / ZDROP_NO_LOGIN=1 skip a part.
+    if [ "${ZDROP_NO_RC:-0}" != 1 ]; then
+      zshrc="${ZDOTDIR:-$HOME}/.zshrc"
+      line="source \"$stable/zsh/zdrop.plugin.zsh\""
+      touch "$zshrc"
+      if grep -qxF "$line" "$zshrc"; then
+        echo "$zshrc already loads zdrop"
+      else
+        # keep the oldest backup when run twice in a second
+        backup="$zshrc.bak-zdrop-$(date +%Y%m%d%H%M%S)"
+        [ -e "$backup" ] || cp "$zshrc" "$backup"
+        # another copy of zdrop (a git checkout, an older install) would load twice: comment it out
+        if grep -q '^[^#]*zdrop\.plugin\.zsh' "$zshrc"; then
+          sed 's|^\([^#]*zdrop\.plugin\.zsh.*\)$|# \1  # replaced by zdrop setup|' "$zshrc" >"$zshrc.zdrop-tmp" && rewrite "$zshrc"
+          echo "commented out an older zdrop line in $zshrc"
+        fi
+        marker="# zdrop: Kiro-style autocomplete (keep this last)"
+        grep -qxF "$marker" "$zshrc" || printf '\n%s\n' "$marker" >>"$zshrc"
+        printf '%s\n' "$line" >>"$zshrc"
+        echo "added zdrop to $zshrc (backup saved next to it)"
+      fi
     fi
+    [ "${ZDROP_NO_LOGIN:-0}" = 1 ] || login_install
     echo "Open a new terminal tab (or run: exec zsh)."
     ;;
   version | --version | -v)
@@ -126,21 +179,18 @@ PLIST
     trap 'rm -rf "$tmp"' EXIT
     curl -fL --retry 3 --progress-bar "$base/$asset" -o "$tmp/$asset"
     curl -fsSL --retry 3 "$base/$asset.sha256" -o "$tmp/$asset.sha256"
-    (cd "$tmp" && shasum -a 256 -c "$asset.sha256" >/dev/null) || { echo "checksum mismatch: not installed" >&2; exit 1; }
+    (cd "$tmp" && sha256_check "$asset.sha256" >/dev/null) || { echo "checksum mismatch: not installed" >&2; exit 1; }
     tar -xf "$tmp/$asset" -C "$root/node_modules/@withfig/autocomplete/build"
     "$node" $node_flags "$root/dist/src/cli.js" stop >/dev/null 2>&1 || true
     echo "aws, gcloud and az specs installed. Turn them on with: export ZDROP_HEAVY_SPECS=1 (in ~/.zshrc, before zdrop)"
     ;;
   uninstall)
     "$node" $node_flags "$root/dist/src/cli.js" stop >/dev/null 2>&1 || true
-    if [ -f "$plist" ]; then
-      launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
-      rm -f "$plist"
-    fi
+    login_remove
     zshrc="${ZDOTDIR:-$HOME}/.zshrc"
     if [ -f "$zshrc" ] && grep -q "$stable/zsh/zdrop.plugin.zsh\|^# zdrop: Kiro-style autocomplete" "$zshrc"; then
       cp "$zshrc" "$zshrc.bak-zdrop-$(date +%Y%m%d%H%M%S)"
-      grep -v "$stable/zsh/zdrop.plugin.zsh\|^# zdrop: Kiro-style autocomplete" "$zshrc" >"$zshrc.zdrop-tmp" && mv "$zshrc.zdrop-tmp" "$zshrc"
+      grep -v "$stable/zsh/zdrop.plugin.zsh\|^# zdrop: Kiro-style autocomplete" "$zshrc" >"$zshrc.zdrop-tmp"; rewrite "$zshrc"
       echo "removed zdrop from $zshrc (backup saved next to it)"
     fi
     rm -rf "$home"

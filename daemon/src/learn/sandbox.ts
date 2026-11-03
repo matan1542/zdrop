@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,7 +11,19 @@ import { learnConfig } from "./config.js";
 const sandboxExec = "/usr/bin/sandbox-exec"; // absolute: a fake sandbox-exec earlier on PATH can't intercept
 const bwrap = ["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap"].find((p) => fs.existsSync(p));
 
-export const sandboxAvailable = (): boolean => (process.platform === "darwin" ? fs.existsSync(sandboxExec) : bwrap != null);
+// bwrap is installed but can't run where unprivileged user namespaces are off (sysctl, or Ubuntu
+// 24.04's AppArmor restriction without bwrap's profile): try it once
+let bwrapWorks: boolean | undefined;
+const bwrapUsable = (): boolean => {
+  if (bwrap == null) return false;
+  bwrapWorks ??= spawnSync(bwrap, ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-net", "--unshare-ipc", "--unshare-pid", "--", "/bin/true"], { timeout: 3000, stdio: "ignore" }).status === 0;
+  return bwrapWorks;
+};
+
+export const sandboxAvailable = (): boolean => (process.platform === "darwin" ? fs.existsSync(sandboxExec) : bwrapUsable());
+/** what `zdrop doctor` should suggest when there is no sandbox */
+export const sandboxHint = (): string =>
+  process.platform === "darwin" ? "sandbox-exec is missing" : bwrap == null ? "install bubblewrap (apt install bubblewrap / dnf install bubblewrap)" : "bubblewrap can't create namespaces here (unprivileged user namespaces are off)";
 
 const sbString = (value: string) => JSON.stringify(value);
 
@@ -80,7 +93,7 @@ export const createSandbox = (): Sandbox => {
     const profile = path.join(realHome, "probe.sb");
     fs.writeFileSync(profile, darwinProfile(realHome));
     wrap = (argv) => [sandboxExec, "-f", profile, ...argv];
-  } else if (bwrap != null) {
+  } else if (bwrap != null && bwrapUsable()) {
     wrap = (argv) => [
       bwrap,
       "--ro-bind", "/", "/",
@@ -89,7 +102,7 @@ export const createSandbox = (): Sandbox => {
       "--tmpfs", "/tmp",
       "--tmpfs", os.homedir(),
       "--bind", realHome, realHome,
-      "--unshare-net", "--unshare-pid", "--new-session", "--die-with-parent",
+      "--unshare-net", "--unshare-ipc", "--unshare-pid", "--new-session", "--die-with-parent",
       "--chdir", realHome,
       "--", ...argv,
     ];

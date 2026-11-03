@@ -56,7 +56,15 @@ describe("doctor", () => {
     };
     settings("Code", '{\n  // mine\n  "terminal.integrated.suggest.enabled": false,\n}');
     settings("Cursor", '{ "editor.fontSize": 13 }');
-    expect(levels(checkEditors(home))).toEqual({ "VS Code terminal suggestions off": "ok", "Cursor terminal suggestions off": "warn" });
+    expect(levels(checkEditors(home, "darwin"))).toEqual({ "VS Code terminal suggestions off": "ok", "Cursor terminal suggestions off": "warn" });
+  });
+
+  it("finds editor settings in ~/.config on Linux", () => {
+    const home = tempDir("home");
+    const file = path.join(process.env.XDG_CONFIG_HOME ?? path.join(home, ".config"), "Kiro", "User", "settings.json");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '{ "terminal.integrated.suggest.enabled": false }');
+    expect(levels(checkEditors(home, "linux"))).toMatchObject({ "Kiro terminal suggestions off": "ok" });
   });
 
   it("knows which terminals draw without flicker", () => {

@@ -2,12 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "linux*"]
   pull_request:
 
 jobs:
   test:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,12 +21,16 @@ jobs:
       - name: yarn.lock names no private registry
         # run scripts/clean-lockfile.sh after changing dependencies
         run: "! grep -q __archiveUrl yarn.lock"
+      - name: zsh, tmux and bubblewrap (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -yq zsh tmux bubblewrap man-db
+      - name: tmux (macOS)
+        if: runner.os == 'macOS'
+        run: brew install tmux
       - run: yarn install --immutable
       - run: yarn build
       - run: yarn typecheck
       - run: yarn test
       - run: yarn setup-test
       - name: End-to-end (zsh in tmux)
-        run: |
-          brew install tmux
-          yarn e2e
+        run: yarn e2e

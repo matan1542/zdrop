@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { configPath, readConfig } from "./config.js";
 import { learnConfig } from "./learn/config.js";
-import { sandboxAvailable } from "./learn/sandbox.js";
+import { sandboxAvailable, sandboxHint } from "./learn/sandbox.js";
 import { LearnedStore } from "./learn/store.js";
 import { zdropHome } from "./protocol.js";
 import { repoRoot } from "./setup.js";
@@ -77,7 +77,11 @@ export const checkConfig = (file = configPath()): Check => {
 
 const stripJsonComments = (text: string) => text.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (_, s: string | undefined) => s ?? "").replace(/,(\s*[}\]])/g, "$1");
 
-export const checkEditors = (home: string): Check[] => {
+/** Where VS Code-like editors keep their user settings. */
+const editorSettingsDir = (home: string, platform = process.platform): string =>
+  platform === "darwin" ? path.join(home, "Library", "Application Support") : process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+
+export const checkEditors = (home: string, platform = process.platform): Check[] => {
   const editors: [string, string][] = [
     ["VS Code", "Code"],
     ["Cursor", "Cursor"],
@@ -86,7 +90,7 @@ export const checkEditors = (home: string): Check[] => {
   ];
   const checks: Check[] = [];
   for (const [label, dir] of editors) {
-    const file = path.join(home, "Library", "Application Support", dir, "User", "settings.json");
+    const file = path.join(editorSettingsDir(home, platform), dir, "User", "settings.json");
     if (!fs.existsSync(file)) continue;
     let enabled: unknown;
     try {
@@ -151,7 +155,10 @@ export const runDoctor = async (env: DoctorEnv): Promise<Check[]> => {
 
   checks.push(...checkZshrc(env.zshrc), ...checkEditors(env.home), checkTerminal(env.termProgram), checkConfig());
 
-  const loginItem = path.join(env.home, "Library", "LaunchAgents", "io.github.matan1542.zdrop.plist");
+  const loginItem =
+    process.platform === "darwin"
+      ? path.join(env.home, "Library", "LaunchAgents", "io.github.matan1542.zdrop.plist")
+      : path.join(process.env.XDG_CONFIG_HOME || path.join(env.home, ".config"), "systemd", "user", "zdrop.service");
   checks.push(ok("starts at login", fs.existsSync(loginItem) ? loginItem : "off: zdrop setup turns it on"));
 
   const status = await env.status?.().catch(() => undefined);
@@ -170,7 +177,7 @@ export const runDoctor = async (env: DoctorEnv): Promise<Check[]> => {
     // never exited yet
   }
 
-  checks.push(sandboxAvailable() ? ok("sandbox for --help probes") : warn("sandbox for --help probes", "none available: only commands you type are probed"));
+  checks.push(sandboxAvailable() ? ok("sandbox for --help probes") : warn("sandbox for --help probes", `none (${sandboxHint()}): only commands you type are probed`));
   const store = new LearnedStore();
   await store.loadIndex();
   const background = (status?.learn as { background?: { state: string } } | undefined)?.background?.state;

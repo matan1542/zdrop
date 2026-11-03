@@ -1,7 +1,7 @@
 name: Release
 
-# Push a tag that matches package.json's version (e.g. v0.2.0) to publish a release with
-# self-contained tarballs for Apple silicon and Intel Macs, their checksums, and install.sh.
+# Push a tag that matches package.json's version (e.g. v0.4.0) to publish a release with
+# self-contained tarballs for macOS and Linux (arm64 and x64), their checksums, and install.sh.
 on:
   push:
     tags: ["v*"]
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -28,25 +28,54 @@ jobs:
           test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != package.json v$version"; exit 1; }
       - run: yarn build
       - run: yarn test
-      - run: scripts/package.sh arm64 x64
-      - name: Smoke-test the arm64 tarball
+      - run: scripts/package.sh
+      - name: Smoke-test the macOS arm64 tarball
         run: |
           home=$(mktemp -d)
           env -i HOME="$home" PATH=/usr/bin:/bin ZDROP_NO_RC=1 ZDROP_NO_LOGIN=1 ZDROP_TARBALL="$PWD/release/zdrop-${GITHUB_REF_NAME#v}-darwin-arm64.tar.xz" sh release/install.sh
           env -i HOME="$home" PATH=/usr/bin:/bin "$home/.zdrop/current/bin/zdrop" query "git ch" | grep -q checkout
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: release/
+
+  linux:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - run: sudo apt-get update -q && sudo apt-get install -yq zsh
+      - name: Smoke-test the Linux x64 tarball
+        run: |
+          home=$(mktemp -d)
+          env -i HOME="$home" PATH=/usr/bin:/bin ZDROP_NO_RC=1 ZDROP_NO_LOGIN=1 ZDROP_TARBALL="$PWD/release/zdrop-${GITHUB_REF_NAME#v}-linux-x64.tar.xz" sh release/install.sh
+          env -i HOME="$home" PATH=/usr/bin:/bin "$home/.zdrop/current/bin/zdrop" query "git ch" | grep -q checkout
+
+  publish:
+    needs: [build, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" release/* \
             --title "zdrop ${GITHUB_REF_NAME#v}" \
-            --notes "Install or update on macOS (Apple silicon or Intel):
+            --notes "Install or update on macOS (Apple silicon or Intel) or Linux (x64 or arm64, glibc 2.28+):
 
           \`\`\`sh
           curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/install.sh | sh
           \`\`\`
 
-          Or with Homebrew: \`brew install matan1542/tap/zdrop\`
+          Or with Homebrew: \`brew install matan1542/tap/zdrop && zdrop setup\`
 
           Then open a new terminal tab. Each tarball bundles its own Node.js; no other dependencies are needed."
       - name: Update the Homebrew tap

@@ -1,14 +1,15 @@
 #!/bin/sh
 # `zdrop setup` / `zdrop uninstall` against Homebrew, installer and source layouts, in a throwaway HOME.
-# HOME and ZDOTDIR are always both set: an inherited ZDOTDIR would edit the real ~/.zshrc.
-# The login item is skipped (ZDROP_NO_LOGIN=1): loading it would touch this user's launchd domain.
+# HOME, ZDOTDIR and XDG_CONFIG_HOME are always set: an inherited ZDOTDIR would edit the real ~/.zshrc,
+# and XDG_CONFIG_HOME holds the systemd unit. The login item is skipped (ZDROP_NO_LOGIN=1): loading
+# it would touch this user's launchd or systemd session.
 set -eu
 repo=$(cd "$(dirname "$0")/.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
-run() { h=$1; shift; HOME="$h" ZDOTDIR="$h" ZDROP_HOME="$h/cache" ZDROP_NO_LOGIN=1 "$@" >/dev/null; }
+run() { h=$1; shift; HOME="$h" ZDOTDIR="$h" XDG_CONFIG_HOME="$h/.config" ZDROP_HOME="$h/cache" ZDROP_NO_LOGIN=1 "$@" >/dev/null; }
 
 # Homebrew: <prefix>/bin/zdrop -> ../Cellar/zdrop/<v>/libexec/bin/zdrop
 b=$tmp/brew
@@ -36,7 +37,16 @@ check "installer: sources current/" "grep -qxF 'source \"$c/.zdrop/current/zsh/z
 rm -f "$c/.zshrc"
 run "$c" "$c/.zdrop/versions/9.9.9/bin/zdrop" setup
 check "installer: run from versions/, still sources current/" "grep -qxF 'source \"$c/.zdrop/current/zsh/zdrop.plugin.zsh\"' '$c/.zshrc'"
-ZDROP_NO_RC=1 run "$c" "$c/.local/bin/zdrop" setup
+# (a subshell: in sh, an assignment before a function call can outlive the call)
+(export ZDROP_NO_RC=1; run "$c" "$c/.local/bin/zdrop" setup)
 check "ZDROP_NO_RC=1 leaves ~/.zshrc alone" "[ \$(grep -c zdrop.plugin.zsh '$c/.zshrc') = 1 ]"
+
+# a dotfiles-managed ~/.zshrc (a symlink) stays a symlink when an older line is commented out
+d=$tmp/dots
+mkdir -p "$d/repo"
+printf 'source ~/old/zdrop/zsh/zdrop.plugin.zsh\n' >"$d/repo/zshrc"
+ln -s "$d/repo/zshrc" "$d/.zshrc"
+run "$d" "$c/.local/bin/zdrop" setup
+check "a symlinked ~/.zshrc stays a symlink" "[ -L '$d/.zshrc' ] && grep -q '^# source ~/old' '$d/repo/zshrc'"
 
 [ $fails = 0 ] && echo "setup: all checks passed" || { echo "setup: $fails failed"; exit 1; }

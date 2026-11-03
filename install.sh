@@ -1,5 +1,5 @@
 #!/bin/sh
-# zdrop installer: Kiro-style dropdown autocomplete for zsh.
+# zdrop installer: Kiro-style dropdown autocomplete for zsh, on macOS and Linux (glibc).
 #
 #   curl -fsSL https://github.com/matan1542/zdrop/releases/latest/download/install.sh | sh
 #
@@ -21,13 +21,27 @@ zshrc="${ZDOTDIR:-$HOME}/.zshrc"
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
-[ "$(uname -s)" = Darwin ] || die "zdrop releases are built for macOS"
+case "$(uname -s)" in
+  Darwin) os=darwin ;;
+  Linux)
+    os=linux
+    # the bundled Node.js needs glibc 2.28+ (Debian 10, Ubuntu 20.04, RHEL 8 and later)
+    if ldd --version 2>&1 | grep -qi musl; then die "musl (Alpine) is not supported: the bundled Node.js needs glibc"; fi
+    glibc=$(getconf GNU_LIBC_VERSION 2>/dev/null | sed 's/[^0-9.]//g')
+    case "$glibc" in
+      2.[0-9] | 2.1[0-9] | 2.2[0-7]) die "glibc $glibc is too old: the bundled Node.js needs 2.28 or later" ;;
+    esac
+    command -v xz >/dev/null 2>&1 || die "xz is required to unpack the release (apt install xz-utils / dnf install xz)"
+    ;;
+  *) die "zdrop releases are built for macOS and Linux" ;;
+esac
 case "$(uname -m)" in
-  arm64) arch=arm64 ;;
-  x86_64) arch=x64 ;;
+  arm64 | aarch64) arch=arm64 ;;
+  x86_64 | amd64) arch=x64 ;;
   *) die "unsupported architecture: $(uname -m)" ;;
 esac
 command -v zsh >/dev/null 2>&1 || die "zsh is required"
+sha256_check() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 -c "$1"; else sha256sum -c "$1"; fi; }
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -44,12 +58,12 @@ else
     version=${version#v}
     base="https://github.com/$repo/releases/download/v$version"
   fi
-  asset="zdrop-$version-darwin-$arch.tar.xz"
+  asset="zdrop-$version-$os-$arch.tar.xz"
   say "Downloading zdrop $version ($arch)"
   # retries cover a dropped connection to GitHub's release CDN
   curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 --progress-bar "$base/$asset" -o "$tmp/$asset" || die "download failed: $base/$asset"
   curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 "$base/$asset.sha256" -o "$tmp/$asset.sha256" || die "checksum download failed"
-  (cd "$tmp" && shasum -a 256 -c "$asset.sha256" >/dev/null) || die "checksum mismatch: refusing to install"
+  (cd "$tmp" && sha256_check "$asset.sha256" >/dev/null) || die "checksum mismatch: refusing to install"
   tarball="$tmp/$asset"
 fi
 
@@ -63,12 +77,14 @@ dest="$prefix/versions/$installed_version"
 rm -rf "$dest"
 mv "$src" "$dest"
 touch "$dest" # tar restores the archive's mtime; pruning below keeps the most recently installed
-xattr -dr com.apple.quarantine "$dest" 2>/dev/null || true
+if [ $os = darwin ]; then xattr -dr com.apple.quarantine "$dest" 2>/dev/null || true; fi
 "$dest/runtime/node" --version >/dev/null 2>&1 || die "the bundled Node.js does not run on this Mac"
 
 # switch atomically; open shells keep working and pick up the new daemon on their next keystroke
 ln -sfn "$dest" "$prefix/current.tmp"
-mv -fh "$prefix/current.tmp" "$prefix/current" 2>/dev/null || { rm -f "$prefix/current"; mv "$prefix/current.tmp" "$prefix/current"; }
+# (BSD mv -h / GNU mv -T: replace the link itself, not move into the directory it points to)
+mv -fh "$prefix/current.tmp" "$prefix/current" 2>/dev/null || mv -fT "$prefix/current.tmp" "$prefix/current" 2>/dev/null ||
+  { rm -f "$prefix/current"; mv "$prefix/current.tmp" "$prefix/current"; }
 "$prefix/current/bin/zdrop" stop >/dev/null 2>&1 || true
 
 # keep the previous version for shells that still have it loaded; drop older ones
