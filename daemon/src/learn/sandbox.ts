@@ -27,11 +27,12 @@ export const sandboxHint = (): string =>
 
 const sbString = (value: string) => JSON.stringify(value);
 
+/** credential stores in the user's home that a probe must not read */
+const secretPaths = [".ssh", ".aws", ".gnupg", ".config/gh", ".netrc", ".npmrc", ".docker", ".kube", ".azure", ".config/gcloud", "Library/Keychains", ".password-store", ".local/share/keyrings", ".pki"];
+
 const darwinProfile = (home: string): string => {
   const user = os.homedir();
-  const secrets = [".ssh", ".aws", ".gnupg", ".config/gh", ".netrc", ".npmrc", ".docker", ".kube", ".azure", ".config/gcloud", "Library/Keychains"]
-    .map((p) => `(subpath ${sbString(path.join(user, p))})`)
-    .join(" ");
+  const secrets = secretPaths.map((p) => `(subpath ${sbString(path.join(user, p))})`).join(" ");
   return `(version 1)
 (allow default)
 (deny network*)
@@ -94,14 +95,26 @@ export const createSandbox = (): Sandbox => {
     fs.writeFileSync(profile, darwinProfile(realHome));
     wrap = (argv) => [sandboxExec, "-f", profile, ...argv];
   } else if (bwrap != null && bwrapUsable()) {
+    // The same policy as on macOS: everything readable (the programs probed often live in the home
+    // folder: ~/.local/bin, ~/.cargo/bin, nvm), credential stores hidden, writes only to the probe's
+    // own HOME and the temp folder, no network.
+    const hide = secretPaths.flatMap((p) => {
+      const target = path.join(os.homedir(), p);
+      try {
+        return fs.statSync(target).isDirectory() ? ["--tmpfs", target] : ["--ro-bind", "/dev/null", target];
+      } catch {
+        return [];
+      }
+    });
+    const tmp = os.tmpdir();
     wrap = (argv) => [
       bwrap,
       "--ro-bind", "/", "/",
       "--dev", "/dev",
       "--proc", "/proc",
-      "--tmpfs", "/tmp",
-      "--tmpfs", os.homedir(),
+      "--bind", tmp, tmp,
       "--bind", realHome, realHome,
+      ...hide,
       "--unshare-net", "--unshare-ipc", "--unshare-pid", "--new-session", "--die-with-parent",
       "--chdir", realHome,
       "--", ...argv,
