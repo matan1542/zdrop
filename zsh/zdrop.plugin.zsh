@@ -37,7 +37,6 @@ typeset -gi _zdrop_replace_len=0 _zdrop_typed_len=0 _zdrop_prompt_w=0
 # cursor column of the card on screen, and of the query in flight (committed when its reply arrives,
 # so repaints before then keep the card where it is)
 typeset -gi _zdrop_anchor=1 _zdrop_query_anchor=1
-typeset -gi _zdrop_desc_on=${ZDROP_DESCRIPTION:-1}
 typeset -g  _zdrop_prefix="" _zdrop_arghint="" _zdrop_pending=""
 typeset -gF _zdrop_sent_at=0
 # editing state
@@ -394,9 +393,14 @@ _zdrop-up() {
   _zdrop_arm_repaint
 }
 
+# ⌃K: the description beside the list → below it → hidden
 _zdrop-toggle-description() {
   _zdrop_active || { _zdrop_fallback; return }
-  (( _zdrop_desc_on = !_zdrop_desc_on ))
+  case $_zdrop_docs in
+    side) _zdrop_docs=below ;;
+    below) _zdrop_docs=off ;;
+    *) _zdrop_docs=side ;;
+  esac
   _zdrop_arm_repaint
 }
 

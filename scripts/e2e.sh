@@ -116,6 +116,16 @@ send C-u; text "gti status "
                           check "a mistyped command offers a fix" "did you mean: git status"
 send Enter;               check "Enter applies the fix instead of running" '^\$ git status *$'
 send C-u
+# the docs panel: beside the list when there is room, below it otherwise; ⌃K cycles side → below → off
+send C-u; text "git ch";  check "the docs panel sits beside the list" "› c[a-z-]+ .{10,}(Switch branches|Apply the changes)"
+                          check "the panel says what the item is" "command +⌃k"
+send C-k;                 check "⌃K moves the description below the list" "^ +─{20,}"
+send C-k;                 check "⌃K again hides it" "Switch branches|Apply the changes" absent
+send C-k;                 check "⌃K again brings the panel back" "› c[a-z-]+ .{10,}(Switch branches|Apply the changes)"
+$tmux_ resize-window -t t -x 70; sleep 0.3
+send C-u; text "git ch";  check "a narrow window gets the description below" "^ +─{20,}"
+$tmux_ resize-window -t t -x 100; sleep 0.3
+send C-u
 
 [ $failures = 0 ] && echo "all e2e checks passed" || echo "$failures e2e check(s) failed"
 exit $failures

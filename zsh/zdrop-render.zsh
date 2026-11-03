@@ -13,6 +13,10 @@ typeset -gA _zdrop_c=()            # theme token -> SGR escape
 typeset -gA _zdrop_glyph=()        # icon key -> single-cell glyph
 typeset -gi _zdrop_w=${ZDROP_WIDTH:-44}
 typeset -gi _zdrop_max_rows=${ZDROP_MAX_ROWS:-7}
+typeset -gi _zdrop_docs_w=${ZDROP_DOCS_WIDTH:-36}
+# where the highlighted item's description goes: a panel beside the list, a bar below it, or nowhere
+typeset -g  _zdrop_docs=${ZDROP_DOCS:-side}
+[[ ${ZDROP_DESCRIPTION:-1} == 0 ]] && _zdrop_docs=off
 typeset -gi _zdrop_reserved=0      # rows currently reserved with zle -R
 typeset -ga _zdrop_reserved_rows=()
 typeset -g  _zdrop_painted=""      # last frame painted (non-empty while the card is on screen)
@@ -82,6 +86,7 @@ _zdrop_load_theme() {
   _zdrop_blend $sel_match $sel_bg 80;  _zdrop_set_colour sel_match_bg bg $REPLY
   _zdrop_blend $fg $bg 50;             _zdrop_set_colour args_fg fg $REPLY
   _zdrop_blend $sel_fg $sel_bg 55;     _zdrop_set_colour sel_args_fg fg $REPLY
+  _zdrop_blend $fg $bg 7;              _zdrop_set_colour panel_bg bg $REPLY
 }
 
 # --- icons (every glyph is one cell; emoji and wide glyphs would break the column maths) ---------
@@ -149,6 +154,34 @@ _zdrop_clip() {
 }
 
 _zdrop_pad() { REPLY="${(l:$1:: :)}"; (( $1 <= 0 )) && REPLY=""; }
+
+# _zdrop_wrap <text> <cells> <max lines> → _zdrop_wrapped = the text word-wrapped (the last line
+# ends in … when it doesn't fit)
+typeset -ga _zdrop_wrapped=()
+_zdrop_wrap() {
+  local text=$1 word line="" REPLY
+  local -i width=$2 max=$3
+  _zdrop_wrapped=()
+  for word in ${=text}; do
+    if [[ -z $line ]]; then
+      line=$word
+    elif (( ${(m)#line} + 1 + ${(m)#word} <= width )); then
+      line+=" $word"
+    else
+      _zdrop_wrapped+=("$line"); line=$word
+    fi
+    # a word longer than the line is cut into pieces
+    while (( ${(m)#line} > width )); do
+      _zdrop_clip "$line" $width
+      _zdrop_wrapped+=("$REPLY"); line=${line#$REPLY}
+    done
+  done
+  [[ -n $line ]] && _zdrop_wrapped+=("$line")
+  if (( ${#_zdrop_wrapped} > max )); then
+    _zdrop_clip "$_zdrop_wrapped[max]" $(( width - 1 ))
+    _zdrop_wrapped=("${(@)_zdrop_wrapped[1,max-1]}" "$REPLY…")
+  fi
+}
 
 # --- rows ------------------------------------------------------------------------------------------
 
@@ -226,6 +259,72 @@ _zdrop_description() {
   REPLY="$_zdrop_c[bg]$colour"$'\e[3m'" $text$REPLY"$'\e[23m'"$_zdrop_c[args_fg]$hint "$'\e[0m'
 }
 
+# _zdrop_panel <record> <min height> <max height> → _zdrop_panel_lines: the docs panel beside the list,
+# each line exactly _zdrop_docs_w cells: the name and its arguments, the whole description, then what
+# the item is (or the loading spinner / update notice) on the last line.
+typeset -ga _zdrop_panel_lines=()
+_zdrop_panel() {
+  local -a f=("${(@ps:$_zdrop_US:)1}")
+  local name=$f[2] desc=$f[4] args=$f[5] type=$f[7] REPLY
+  local -i h=$2 hmax=$3 w=$(( _zdrop_docs_w - 2 )) i
+  local bg=$_zdrop_c[panel_bg] fg=$_zdrop_c[fg] dim=$_zdrop_c[args_fg]
+  local -a body=()
+
+  _zdrop_clip "$name" $w
+  local title=$REPLY
+  local -i used=${(m)#title}
+  local line=$'\e[1m'"$title"$'\e[22m'
+  if [[ -n $args ]] && (( used + 3 < w )); then
+    _zdrop_clip "$args" $(( w - used - 1 ))
+    line+=" $dim$REPLY$fg"; (( used += 1 + ${(m)#REPLY} ))
+  fi
+  _zdrop_pad $(( w - used ))
+  body+=("$line$REPLY")
+
+  local footer="" fcolour=$dim
+  if [[ -n $_zdrop_notice ]] && (( ! _zdrop_navigated )); then
+    footer="⬆ $_zdrop_notice"
+  elif _zdrop_loading_due; then
+    local -i ms=$(( EPOCHREALTIME * 1000 ))
+    footer="$_zdrop_spinner[$(( ms / 80 % 10 + 1 ))] loading $_zdrop_pending…" fcolour=$fg
+  else
+    # Fig leaves the type empty for most items; the icon key says what they are
+    local kind=${type:-$f[1]}
+    [[ $f[1] == function ]] && kind=function
+    case $kind in
+      subcommand) footer="command" ;;
+      option) footer="option${args:+ · takes $args}" ;;
+      arg) footer="value" ;;
+      shortcut) footer="alias" ;;
+      function) footer="shell function" ;;
+      typo) footer="Enter fixes the line" ;;
+      history) footer="from your history" ;;
+      folder|file|frecent) footer=${${type:-folder}/frecent/folder} ;;
+    esac
+  fi
+
+  local -i room=$(( hmax - 1 - (${#footer} > 0) ))
+  if [[ -z $desc ]]; then
+    [[ $type == (folder|file) ]] || { _zdrop_wrapped=("$_zdrop_c[nodesc]No description$fg"); _zdrop_pad $(( w - 14 )); body+=("$_zdrop_wrapped[1]$REPLY"); }
+  else
+    _zdrop_wrap "$desc" $w $(( room > 0 ? room : 1 ))
+    for line in "${_zdrop_wrapped[@]}"; do
+      _zdrop_pad $(( w - ${(m)#line} )); body+=("$line$REPLY")
+    done
+  fi
+  # taller than the list when the description needs it
+  (( ${#body} + (${#footer} > 0) > h )) && h=$(( ${#body} + (${#footer} > 0) ))
+  while (( ${#body} < h - (${#footer} > 0) )); do _zdrop_pad $w; body+=("$REPLY"); done
+  if [[ -n $footer ]]; then
+    _zdrop_clip "$footer" $(( w - 4 ))
+    local text=$REPLY
+    _zdrop_pad $(( w - ${(m)#text} - 2 ))
+    body+=("$fcolour"$'\e[3m'"$text"$'\e[23m'"$REPLY$dim⌃k$fg")
+  fi
+  _zdrop_panel_lines=()
+  for (( i = 1; i <= h; i++ )); do _zdrop_panel_lines+=("$bg$fg ${body[i]} "$'\e[0m'); done
+}
+
 # --- frame + paint ---------------------------------------------------------------------------------
 
 # Builds _zdrop_frame (coloured rows) and _zdrop_frame_w from the current state.
@@ -260,11 +359,29 @@ _zdrop_build_frame() {
     _zdrop_row "$_zdrop_items[i]" $(( i == _zdrop_sel ))
     _zdrop_frame+=("$REPLY")
   done
-  if (( _zdrop_desc_on )); then
-    _zdrop_separator; _zdrop_frame+=("$REPLY")
-    _zdrop_description "$_zdrop_items[_zdrop_sel]"; _zdrop_frame+=("$REPLY")
-  fi
   _zdrop_frame_w=$_zdrop_w
+
+  local docs=$_zdrop_docs
+  # beside the list when the window is wide enough, below it otherwise
+  [[ $docs == side ]] && (( _zdrop_w + 1 + _zdrop_docs_w > ${COLUMNS:-80} )) && docs=below
+  case $docs in
+    side)
+      # as tall as the list, or taller (up to the row limit) for a long description
+      local -i hmax=$(( _zdrop_max_rows > rows ? _zdrop_max_rows : rows ))
+      (( hmax > LINES - 4 )) && hmax=$(( LINES - 4 > rows ? LINES - 4 : rows ))
+      _zdrop_panel "$_zdrop_items[_zdrop_sel]" $rows $hmax
+      local blank=${(l:_zdrop_w:: :)}
+      for (( i = 1; i <= ${#_zdrop_panel_lines}; i++ )); do
+        # rows below a short list are left blank (no card background)
+        _zdrop_frame[i]="${_zdrop_frame[i]:-$blank} $_zdrop_panel_lines[i]"
+      done
+      _zdrop_frame_w=$(( _zdrop_w + 1 + _zdrop_docs_w ))
+      ;;
+    below)
+      _zdrop_separator; _zdrop_frame+=("$REPLY")
+      _zdrop_description "$_zdrop_items[_zdrop_sel]"; _zdrop_frame+=("$REPLY")
+      ;;
+  esac
 }
 
 # Paints the current state (or clears when there is nothing to show).
