@@ -40,7 +40,7 @@ cd "$app"
 EOF
 
 $tmux_ -f /dev/null new-session -d -x 100 -y 30 -s t \
-  "env ZDOTDIR=$work/zdot XDG_CONFIG_HOME=$work/config ZDROP_HOME=$work/home ZDROP_LEARN_BACKGROUND=0 ZDROP_TEST_NOTICE='zdrop 9.9.9 available' COLORTERM=truecolor TERM=xterm-256color zsh -i"
+  "env ZDOTDIR=$work/zdot XDG_CONFIG_HOME=$work/config ZDROP_HOME=$work/home ZDROP_LEARN_BACKGROUND=0 ZDROP_TEST_NOTICE='zdrop 9.9.9 available' COLORTERM=truecolor TERM=xterm-256color zsh -d -i"
 sleep 1.5
 
 send() { $tmux_ send-keys -t t "$@"; sleep 0.5; }
@@ -137,7 +137,7 @@ send C-u
 # the config file: a new shell picks up its keys
 mkdir -p "$work/config/zdrop"
 printf '# e2e\naccent = #AA0000\nrows = 2\n' >"$work/config/zdrop/config"
-text "exec zsh -i"; send Enter; sleep 1
+text "exec zsh -d -i"; send Enter; sleep 1
 send C-u; text "git ch"; sleep 1
 if $tmux_ capture-pane -t t -p -e | grep '48;2;170;0;0m' | sed 's/\x1b\[[0-9;]*m//g' | grep -q 'c[a-z-]* '; then echo "ok   the config file sets the highlight colour"
 else echo "FAIL the config file sets the highlight colour"; $tmux_ capture-pane -t t -p -e | grep -v "^$" | tail -8 | cat -v | sed 's/^/     | /'; failures=$((failures + 1)); fi
