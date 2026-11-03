@@ -40,7 +40,7 @@ cd "$app"
 EOF
 
 $tmux_ -f /dev/null new-session -d -x 100 -y 30 -s t \
-  "env ZDOTDIR=$work/zdot ZDROP_HOME=$work/home ZDROP_LEARN_BACKGROUND=0 ZDROP_TEST_NOTICE='zdrop 9.9.9 available' COLORTERM=truecolor TERM=xterm-256color zsh -i"
+  "env ZDOTDIR=$work/zdot XDG_CONFIG_HOME=$work/config ZDROP_HOME=$work/home ZDROP_LEARN_BACKGROUND=0 ZDROP_TEST_NOTICE='zdrop 9.9.9 available' COLORTERM=truecolor TERM=xterm-256color zsh -i"
 sleep 1.5
 
 send() { $tmux_ send-keys -t t "$@"; sleep 0.5; }
@@ -125,6 +125,19 @@ send C-k;                 check "⌃K again brings the panel back" "› c[a-z-]+
 $tmux_ resize-window -t t -x 70; sleep 0.3
 send C-u; text "git ch";  check "a narrow window gets the description below" "^ +─{20,}"
 $tmux_ resize-window -t t -x 100; sleep 0.3
+send C-u
+# the config file: a new shell picks up its keys
+mkdir -p "$work/config/zdrop"
+printf '# e2e\naccent = #AA0000\nrows = 2\n' >"$work/config/zdrop/config"
+text "exec zsh -i"; send Enter; sleep 1
+send C-u; text "git ch"; sleep 1
+if $tmux_ capture-pane -t t -p -e | grep '48;2;170;0;0m' | sed 's/\x1b\[[0-9;]*m//g' | grep -q 'c[a-z-]* '; then echo "ok   the config file sets the highlight colour"
+else echo "FAIL the config file sets the highlight colour"; $tmux_ capture-pane -t t -p -e | grep -v "^$" | tail -8 | cat -v | sed 's/^/     | /'; failures=$((failures + 1)); fi
+send C-u; text "cd ";     check "folders are listed after the restart" "▸ d"
+                          check "the config file sets the number of rows" "▸ src" absent
+# a cold start answers without another keystroke
+send C-u; ZDROP_HOME="$work/home" "$root/bin/zdrop" stop >/dev/null 2>&1; sleep 0.3
+text "git ch"; sleep 2;   check "the first keystrokes after a cold start get a popup" "› c[a-z-]+ "
 send C-u
 
 [ $failures = 0 ] && echo "all e2e checks passed" || echo "$failures e2e check(s) failed"

@@ -70,12 +70,14 @@ _zdrop_set_colour() {
 }
 
 _zdrop_load_theme() {
+  setopt local_options extended_glob
   local bg fg border sel_bg sel_fg match sel_match nodesc REPLY
   if [[ ${ZDROP_THEME:-dark} == light ]]; then
     bg=FEFEFE fg=070707 border=C7C7C7 sel_bg=2969DA sel_fg=FDFDFD match=FFEF98 sel_match=6A8EDA nodesc=8C8C8C
   else
     bg=303030 fg=B4B4B4 border=414141 sel_bg=1E5AC7 sel_fg=FDFDFD match=5F5938 sel_match=6A8EDA nodesc=8C8C8C
   fi
+  [[ ${ZDROP_ACCENT#\#} == [0-9a-fA-F](#c6) ]] && sel_bg=${ZDROP_ACCENT#\#}
   _zdrop_set_colour bg bg $bg
   _zdrop_set_colour fg fg $fg
   _zdrop_set_colour border fg $border

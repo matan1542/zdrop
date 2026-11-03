@@ -5,17 +5,20 @@ Kiro CLI–style dropdown autocomplete for zsh: an IDE-like popup while you type
 
 ```
  $ git ch▌
-   › checkout  [branch, file, tag or commit]
-   › cherry-pick  commit...
-  ────────────────────────────────────────────
-   Switch branches or restore working tre  ⌃k
+   › checkout  [branch, file, tag or commit]    checkout [branch, file, tag or com
+   › cherry-pick  commit...                     Switch branches or restore working
+                                                tree files
+                                                command                         ⌃k
 ```
 
 - Runs **inside the terminal**: no PTY wrapper, no desktop overlay window, no Accessibility permission.
   Works in Terminal.app, iTerm2 and VS Code / Cursor / Kiro terminals, next to zsh-autosuggestions.
 - **Kiro's look and behaviour**, taken from Amazon Q's open-source UI (which Kiro inherited): blue
-  selected row, highlighted matches, dimmed argument hints, an italic description bar, ghost text,
-  and loading states (marching dots, or a spinner in the description bar while static results show).
+  selected row, highlighted matches, dimmed argument hints, a docs panel beside the list, ghost text,
+  and loading states (marching dots, or a spinner while static results show).
+- **Knows your shell**: your aliases (`g ch` completes like `git ch`) and functions, what you run
+  (ranking, and values you typed before, shared across subcommands), the folders you visit, and a
+  fix for a mistyped command (`gti status` → `git status`).
 - **Every command on your PATH**, not just the 700 with a spec: tools like `claude`, `codex` or your
   team's internal CLIs are learned from their `--help` (run in a sandbox) or man page, with no
   per-tool setup (see [Learned commands](#learned-commands)).
@@ -94,9 +97,9 @@ highlighted suggestion is previewed after the cursor as dimmed ghost text.
 | **Tab / ↓ / ⌃N** | Next suggestion (Tab wraps around) |
 | **⇧Tab / ↑ / ⌃P** | Previous suggestion (⇧Tab wraps around; ↑ on the first row closes the popup) |
 | **→** | Fill in the highlighted suggestion |
-| **Enter** | Fill in the highlighted suggestion while it extends the word you are typing (the ghost text) or after you moved into the list; otherwise run the command |
+| **Enter** | Fill in the highlighted suggestion while it extends the word you are typing (the ghost text) or after you moved into the list; otherwise run the command. On a "did you mean" row, fix the line |
 | **Esc** | Close the popup until the next word |
-| **⌃K** | Toggle the description bar |
+| **⌃K** | Docs panel beside the list → description below it → hidden |
 
 So Enter runs the line right after a space (`cd `, `git checkout main `), when the word is already
 complete (`git status`, `cd ../..`) and when nothing matches, and fills in while you type (`git ch` →
@@ -107,20 +110,48 @@ still accepts zsh-autosuggestions' suggestion.
 
 ## Configuration
 
-Set these before sourcing the plugin. Variables marked "daemon" take effect when the daemon next starts (`bin/zdrop stop` restarts it on demand).
+Settings live in `~/.config/zdrop/config` (or under `$XDG_CONFIG_HOME`), one `key = value` per line:
+
+```sh
+zdrop config        # every setting, its value and where it comes from
+zdrop config edit   # open the file (created with every key commented out)
+```
+
+```ini
+theme = light
+accent = #2969DA      # the highlighted row
+rows = 10
+docs = below          # side | below | off
+enter = smart         # smart | fill | run
+typos = off
+```
+
+Keys: `theme`, `accent`, `width`, `rows`, `icons`, `docs`, `docs_width`, `enter`, `ghost`, `wrap`
+(for new terminal tabs), and `history`, `frecency`, `typos`, `learn`, `learn_background`, `learn_deny`,
+`heavy_specs`, `update_check` (the daemon restarts by itself to pick them up). `zdrop doctor` flags
+unknown keys and bad values.
+
+Each key also has an environment variable, which wins over the file. Set them before sourcing the
+plugin; variables marked "daemon" take effect when the daemon next starts.
 
 | Variable | Default | |
 |---|---|---|
 | `ZDROP_THEME` | `dark` | `dark` or `light` (Kiro's colour tokens) |
+| `ZDROP_ACCENT` | `1E5AC7` | colour of the highlighted row (`rrggbb`) |
 | `ZDROP_ICONS` | `unicode` | `unicode`, `nerd` (needs a Nerd Font) or `none` |
 | `ZDROP_WIDTH` | `44` | popup width in cells |
 | `ZDROP_MAX_ROWS` | `7` | visible rows |
-| `ZDROP_DESCRIPTION` | `1` | show the description bar |
+| `ZDROP_DOCS` | `side` | the highlighted item's description: `side` (a panel beside the list; below it when the window is too narrow), `below` or `off` |
+| `ZDROP_DOCS_WIDTH` | `36` | docs panel width in cells |
+| `ZDROP_ENTER` | `smart` | `smart` (see [Keys](#keys-while-the-popup-is-open)), `fill` (Enter always fills in) or `run` (Enter always runs the line, unless you moved into the list) |
 | `ZDROP_WRAP` | `0` | ↓ on the last row wraps to the top |
 | `ZDROP_GHOST` | `1` | preview the suggestion after the cursor; `0` turns it off |
 | `ZDROP_GHOST_STYLE` | `fg=8` | zle highlight style of the ghost text |
 | `ZDROP_SYNC` | `1` | draw each keystroke as one synchronized frame (DEC mode 2026) to avoid flicker; `0` turns it off |
-| `ZDROP_UPDATE_CHECK` | `1` | daemon: `0` never checks GitHub for a newer release (otherwise at most weekly; a newer one is mentioned once per shell in the description bar) |
+| `ZDROP_HISTORY` | `1` | daemon: `0` stops ranking by your history and offering values you typed before |
+| `ZDROP_FRECENCY` | `1` | daemon: `0` stops `cd` offering the folders you visit most |
+| `ZDROP_TYPOS` | `1` | daemon: `0` stops offering a fix for a mistyped command (also off when zsh's `CORRECT` option is on) |
+| `ZDROP_UPDATE_CHECK` | `1` | daemon: `0` never checks GitHub for a newer release (otherwise at most weekly; a newer one is mentioned once per shell in the popup) |
 | `ZDROP_DISABLE` | `0` | `1` skips loading the plugin |
 | `ZDROP_SPEC_PATH` | | daemon: extra spec directories (colon-separated), searched first |
 | `ZDROP_HEAVY_SPECS` | `0` | daemon: `1` uses the full aws, gcloud and az Fig specs (82% of all spec bytes; releases need `zdrop extras install`). Off, those tools are learned from their help like any other |

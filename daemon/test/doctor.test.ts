@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkEditors, checkTerminal, checkZshrc } from "../src/doctor.js";
+import { checkEditors, checkTerminal, checkZshrc, markdownDoctor } from "../src/doctor.js";
 import { latestRelease, newer, noticeFor } from "../src/update.js";
 import { tempDir } from "./helpers.js";
 
@@ -28,6 +28,13 @@ describe("doctor", () => {
     const checks = checkZshrc(zshrc("source a/zdrop.plugin.zsh\nsource b/zdrop.plugin.zsh\nsource ~/zsh-autosuggestions/zsh-autosuggestions.zsh\neval \"$(kiro-cli init zsh post)\"\n"));
     expect(levels(checks)).toEqual({ "~/.zshrc loads zdrop once": "fail", "zdrop loads last": "warn", "no other autocomplete popup": "warn" });
     expect(checks.find((c) => c.title === "zdrop loads last")?.detail).toMatch(/3: source ~\/zsh-autosuggestions/);
+  });
+
+  it("prints a markdown block for an issue, with the home folder hidden", () => {
+    const text = markdownDoctor([{ level: "warn", title: "settings", detail: "/Users/someone/.config/zdrop/config: bad" }], "/Users/someone");
+    expect(text).toContain("! settings  ~/.config/zdrop/config: bad");
+    expect(text).not.toContain("/Users/someone");
+    expect(text).toMatch(/^<details>/);
   });
 
   it("flags a line that sources a file that is gone", () => {

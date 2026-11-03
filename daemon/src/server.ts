@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import log from "../vendor/inshellisense/utils/log.js";
 import { ShellNames, shellNames } from "../vendor/inshellisense/runtime/alias.js";
 import { clearImplicitGeneratorState, getGeneratorCacheStats } from "../vendor/inshellisense/runtime/generatorCache.js";
+import { configPath } from "./config.js";
 import { runQuery } from "./engine.js";
 import { childSlots, killAllChildren, limits, liveChildren } from "./limits.js";
 import { encodeProgress, encodeResult, pidPath, socketPath, US, zdropHome } from "./protocol.js";
@@ -177,7 +178,7 @@ export const serve = async (): Promise<void> => {
       case "E": {
         session.env = { path: fields[0] || process.env.PATH || "/usr/bin:/bin", histfile: fields[1] || undefined };
         builder.setEnv(session.env);
-        void shellNames.run(session.names, () => usage.loadHistory(session.env?.histfile)).catch(() => undefined);
+        if (process.env.ZDROP_HISTORY !== "0") void shellNames.run(session.names, () => usage.loadHistory(session.env?.histfile)).catch(() => undefined);
         break;
       }
       case "H":
@@ -227,13 +228,23 @@ export const serve = async (): Promise<void> => {
 
   // A rebuilt or reinstalled zdrop must not keep answering with old code from a long-lived daemon:
   // once our own files are newer than this process, exit; the next keystroke starts the new code.
+  // the same for the config file: its daemon keys are read once, at startup
   const ownCode = fileURLToPath(import.meta.url);
+  const configMtime = () => {
+    try {
+      return fs.statSync(configPath()).mtimeMs;
+    } catch {
+      return 0;
+    }
+  };
+  const configAtStart = configMtime();
   setInterval(() => {
     try {
       if (fs.statSync(ownCode).mtimeMs > startedAt) shutdown("code updated");
     } catch {
       shutdown("code removed");
     }
+    if (configMtime() !== configAtStart) shutdown("config changed");
   }, 10_000).unref();
 
   // Restarting is the only way to hand memory back from V8; the plugin respawns us on its next keystroke.

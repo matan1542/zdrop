@@ -16,6 +16,28 @@ typeset -g _zdrop_loaded=1
 
 # :a, not :A: keep ~/.zdrop/current unresolved so an update takes effect in shells that are already open
 typeset -g _zdrop_root=${${(%):-%x}:a:h:h}
+
+# Settings from ~/.config/zdrop/config (`key = value`; the full table is in daemon/src/config.ts):
+# the shell's keys become their ZDROP_* variables unless those are already set. No fork: read loop.
+_zdrop_read_config() {
+  setopt local_options extended_glob
+  local file=${XDG_CONFIG_HOME:-$HOME/.config}/zdrop/config line key value var
+  [[ -r $file ]] || return 0
+  local -A vars=(theme ZDROP_THEME accent ZDROP_ACCENT width ZDROP_WIDTH rows ZDROP_MAX_ROWS
+    icons ZDROP_ICONS docs ZDROP_DOCS docs_width ZDROP_DOCS_WIDTH enter ZDROP_ENTER ghost ZDROP_GHOST wrap ZDROP_WRAP)
+  while IFS= read -r line || [[ -n $line ]]; do
+    [[ $line == [[:space:]]#(\#*|) || $line != *=* ]] && continue
+    key=${${line%%=*}//[[:space:]]/}
+    value=${${${line#*=}##[[:space:]]#}%%[[:space:]]#}
+    value=${${value#[\"\']}%[\"\']}
+    var=$vars[$key]
+    [[ -n $var && -z ${(P)var} ]] || continue
+    case $value in on) value=1 ;; off) value=0 ;; esac
+    typeset -g $var=$value
+  done <$file
+}
+_zdrop_read_config
+
 source "$_zdrop_root/zsh/zdrop-render.zsh"
 typeset -g _zdrop_sock="${ZDROP_HOME:-$HOME/.cache/zdrop}/zdrop.sock"
 
@@ -50,17 +72,39 @@ typeset -gA _zdrop_orig=()               # raw key -> widget it had before zdrop
 _zdrop_connect() {
   (( _zdrop_fd )) && return 0
   if ! zsocket "$_zdrop_sock" 2>/dev/null; then
-    # start the shared daemon (at most every 5s); a later keystroke connects
+    # start the shared daemon (at most every 5s), and ask again once it listens
     if (( EPOCHREALTIME - _zdrop_started_at > 5 )); then
       _zdrop_started_at=$EPOCHREALTIME
       ( "$_zdrop_root/bin/zdrop" start >/dev/null 2>&1 & ) 2>/dev/null
     fi
+    [[ -n $WIDGET ]] && _zdrop_arm_retry
     return 1
   fi
+  _zdrop_retries=0
   _zdrop_fd=$REPLY
   zle -F -w $_zdrop_fd _zdrop-on-msg
   _zdrop_send_names || return 1
   _zdrop_send_env
+}
+
+# While the daemon starts (a cold start, or a restart for new settings), poll for it every 0.2s for
+# up to 3s from a zle fd handler, then send the query for what is typed: no extra keystroke needed.
+# The timer is a forked `sleep`, only ever while the daemon is down.
+typeset -gi _zdrop_retry_fd=0 _zdrop_retries=0
+_zdrop_arm_retry() {
+  (( _zdrop_retry_fd || _zdrop_retries >= 15 )) && return 0
+  (( _zdrop_retries++ ))
+  exec {_zdrop_retry_fd}< <(sleep 0.2; print)
+  zle -F -w $_zdrop_retry_fd _zdrop-retry
+}
+
+_zdrop-retry() {
+  zle -F $_zdrop_retry_fd 2>/dev/null
+  exec {_zdrop_retry_fd}<&-
+  _zdrop_retry_fd=0
+  _zdrop_connect || return 0
+  [[ $_zdrop_state != dismissed && -n ${LBUFFER//[[:space:]]/} && $RBUFFER != [^[:space:]]* ]] && _zdrop_query
+  return 0
 }
 
 # this shell's aliases, functions and builtins: commands the daemon can't find on PATH
@@ -122,7 +166,8 @@ _zdrop_names_line() {
 _zdrop_on_msg() {
   local fd=$1 line latest=""
   local -i reads=0 tick=0
-  if [[ -n $2 ]]; then _zdrop_disconnect; return; fi
+  # the daemon went away (restarting for new code or settings): reconnect and ask again
+  if [[ -n $2 ]]; then _zdrop_disconnect; _zdrop_arm_retry; return; fi
   while IFS= read -r -t 0 -u $fd line; do
     (( reads++ ))
     case $line in
@@ -339,8 +384,15 @@ _zdrop_insert() {
 _zdrop-accept() {
   _zdrop_active || { _zdrop_fallback; return }
   _zdrop_field $_zdrop_sel 7
-  # a "did you mean" row: running the line as typed would only fail, so Enter fixes it first
-  if (( ! _zdrop_navigated )) && [[ $REPLY != typo ]]; then
+  # enter = run: always runs the line as typed, unless the user moved into the list
+  if [[ ${ZDROP_ENTER:-smart} == run ]] && (( ! _zdrop_navigated )); then
+    _zdrop_hide
+    _zdrop_fallback
+    return
+  fi
+  # a "did you mean" row: running the line as typed would only fail, so Enter fixes it first;
+  # enter = fill: always fills in the highlighted row
+  if (( ! _zdrop_navigated )) && [[ $REPLY != typo && ${ZDROP_ENTER:-smart} != fill ]]; then
     _zdrop_extension
     if [[ -z $REPLY ]]; then
       _zdrop_hide
@@ -475,6 +527,7 @@ typeset -ga _zdrop_widgets=(_zdrop-accept _zdrop-tab _zdrop-tab-back _zdrop-down
 for _zdrop_w_name in $_zdrop_widgets; do zle -N $_zdrop_w_name; done
 unset _zdrop_w_name
 zle -N _zdrop-on-msg _zdrop_on_msg
+zle -N _zdrop-retry
 
 # navigation must not make zsh-autosuggestions fetch or clear; accept/tab are ordinary edits to it
 typeset -ga ZSH_AUTOSUGGEST_IGNORE_WIDGETS

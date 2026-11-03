@@ -7,6 +7,7 @@ import { aliasExpand } from "../vendor/inshellisense/runtime/alias.js";
 import { parseCommand, type CommandToken } from "../vendor/inshellisense/runtime/parser.js";
 import { Shell } from "../vendor/inshellisense/utils/shell.js";
 import { dirs, tildify } from "./rank/dirs.js";
+import { enabled } from "./config.js";
 import { findTypo } from "./rank/typo.js";
 import { usage } from "./rank/usage.js";
 
@@ -89,7 +90,7 @@ const lineContext = (lbuffer: string, cwd: string): LineContext => {
 
 /** `gti status` → one row that replaces the whole line with `git status`. */
 const typoResult = (ctx: LineContext, pending: string[]): QueryResult | undefined => {
-  const typo = findTypo(ctx.line, ctx.cwd);
+  const typo = enabled("ZDROP_TYPOS") ? findTypo(ctx.line, ctx.cwd) : undefined;
   if (typo == null) return;
   const fixed = ctx.line.slice(0, typo.start) + typo.fix + ctx.line.slice(typo.start + typo.word.length);
   const item: Item = { icon: "typo", name: typo.fix, insert: fixed, description: `did you mean: ${fixed.trim()}`, args: "", matchIndices: [], type: "typo" };
@@ -109,7 +110,7 @@ const rankItems = (items: Item[], priorities: number[], ctx: LineContext, term: 
       item,
       index,
       group: (priorities[index] ?? 50) > 75 ? 0 : lower === "" || item.name.toLowerCase().startsWith(lower) ? 1 : 2,
-      score: usage.score(ctx.before, item.name),
+      score: enabled("ZDROP_HISTORY") ? usage.score(ctx.before, item.name) : 0,
     }))
     .sort((a, b) => a.group - b.group || b.score - a.score || a.index - b.index)
     .map((r) => r.item);
@@ -117,7 +118,7 @@ const rankItems = (items: Item[], priorities: number[], ctx: LineContext, term: 
 
 /** Values used before in this position (flag values, positional words) that the spec didn't offer. */
 const historyItems = (items: Item[], ctx: LineContext, term: string): Item[] => {
-  if (ctx.before.length === 0 || term.startsWith("-") || cdCommands.has(ctx.before[0])) return [];
+  if (!enabled("ZDROP_HISTORY") || ctx.before.length === 0 || term.startsWith("-") || cdCommands.has(ctx.before[0])) return [];
   const known = new Set(items.map((item) => item.name));
   return usage
     .values(ctx.before, term, 5)
@@ -135,7 +136,7 @@ const historyItems = (items: Item[], ctx: LineContext, term: string): Item[] => 
 
 /** Frecent directories for `cd`: the top ones before anything is typed, matching ones after. */
 const dirItems = (items: Item[], ctx: LineContext, term: string): { first: Item[]; last: Item[] } => {
-  if (ctx.before.length !== 1 || !cdCommands.has(ctx.before[0]) || term.includes("/")) return { first: [], last: [] };
+  if (!enabled("ZDROP_FRECENCY") || ctx.before.length !== 1 || !cdCommands.has(ctx.before[0]) || term.includes("/")) return { first: [], last: [] };
   const listed = new Set(items.map((item) => path.resolve(ctx.cwd, item.insert.replace(/\\(.)/g, "$1"))));
   const hits = dirs.top(term ? 5 : 3, term, (dir) => dir === ctx.cwd || listed.has(dir) || listed.has(dir + "/"));
   const toItem = (dir: string): Item => {

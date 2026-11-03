@@ -1,3 +1,5 @@
+// first: the config file sets ZDROP_* variables before any module reads them
+import "./config.js";
 import { runQuery } from "./engine.js";
 import { initRuntime } from "./setup.js";
 
@@ -9,7 +11,8 @@ const usage = `usage:
   zdrop learn <command> [subcommand...]        learn a command from --help / man now and print the result
   zdrop why <command>                          where a command's completions come from, and why
   zdrop forget <command>|--all                 drop learned completions (relearned on next use)
-  zdrop doctor                                 check the setup, with a fix for each problem
+  zdrop doctor [--markdown]                    check the setup, with a fix for each problem
+  zdrop config [edit]                          show every setting and where it comes from / edit the file
   zdrop extras install                         download the aws, gcloud and az specs (release installs)
   zdrop version | update [version] | uninstall`;
 
@@ -59,7 +62,34 @@ const main = async (argv: string[]) => {
           return undefined;
         }
       };
-      process.exitCode = printDoctor(await runDoctor(env));
+      const checks = await runDoctor(env);
+      if (rest.includes("--markdown")) {
+        const { markdownDoctor } = await import("./doctor.js");
+        process.stdout.write(markdownDoctor(checks));
+      } else process.exitCode = printDoctor(checks);
+      return;
+    }
+    case "config": {
+      const { configPath, effectiveConfig, readConfig, template } = await import("./config.js");
+      const file = configPath();
+      if (rest[0] === "edit") {
+        const fs = await import("node:fs");
+        const path = await import("node:path");
+        if (!fs.existsSync(file)) {
+          fs.mkdirSync(path.dirname(file), { recursive: true });
+          fs.writeFileSync(file, template());
+        }
+        const { spawnSync } = await import("node:child_process");
+        const editor = process.env.VISUAL || process.env.EDITOR || "vi";
+        spawnSync("/bin/sh", ["-c", `${editor} "$1"`, "sh", file], { stdio: "inherit" });
+        return;
+      }
+      const parsed = readConfig(file);
+      process.stdout.write(`${file}${parsed.exists ? "" : " (not created yet: zdrop config edit)"}\n\n`);
+      for (const { key, value, source } of effectiveConfig(parsed)) {
+        process.stdout.write(`  ${key.key.padEnd(17)}${(value || "-").padEnd(12)}${source === "default" ? "\x1b[2mdefault\x1b[0m" : source === "env" ? `env ${key.env}` : "file"}\n`);
+      }
+      for (const problem of parsed.problems) process.stdout.write(`\x1b[33m!\x1b[0m ${problem}\n`);
       return;
     }
     case "forget": {

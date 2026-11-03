@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { configPath, readConfig } from "./config.js";
 import { learnConfig } from "./learn/config.js";
 import { sandboxAvailable } from "./learn/sandbox.js";
 import { LearnedStore } from "./learn/store.js";
@@ -65,6 +66,13 @@ export const checkZshrc = (zshrc: string, home = os.homedir()): Check[] => {
   const rival = lines.find((line) => !line.trim().startsWith("#") && otherPopups.test(line));
   if (rival) checks.push(warn("no other autocomplete popup", `two popups would compete: ${rival.trim().slice(0, 60)}`));
   return checks;
+};
+
+export const checkConfig = (file = configPath()): Check => {
+  const parsed = readConfig(file);
+  if (!parsed.exists) return ok("settings", "defaults (zdrop config edit to change them)");
+  if (parsed.problems.length > 0) return warn("settings", `${file}: ${parsed.problems.slice(0, 3).join("; ")}`);
+  return ok("settings", `${parsed.values.size} set in ${file}`);
 };
 
 const stripJsonComments = (text: string) => text.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (_, s: string | undefined) => s ?? "").replace(/,(\s*[}\]])/g, "$1");
@@ -141,7 +149,7 @@ export const runDoctor = async (env: DoctorEnv): Promise<Check[]> => {
   const zsh = zshVersion();
   checks.push(zsh == null ? fail("zsh", "zsh not found") : newer("5.8", zsh) ? fail("zsh 5.8+", `zsh ${zsh} is too old`) : ok("zsh 5.8+", zsh));
 
-  checks.push(...checkZshrc(env.zshrc), ...checkEditors(env.home), checkTerminal(env.termProgram));
+  checks.push(...checkZshrc(env.zshrc), ...checkEditors(env.home), checkTerminal(env.termProgram), checkConfig());
 
   const loginItem = path.join(env.home, "Library", "LaunchAgents", "io.github.matan1542.zdrop.plist");
   checks.push(ok("starts at login", fs.existsSync(loginItem) ? loginItem : "off: zdrop setup turns it on"));
@@ -176,6 +184,13 @@ export const runDoctor = async (env: DoctorEnv): Promise<Check[]> => {
     else checks.push(ok("up to date", version));
   }
   return checks;
+};
+
+/** A block to paste into a GitHub issue: plain marks, the home folder as ~. */
+export const markdownDoctor = (checks: Check[], home = os.homedir()): string => {
+  const mark = { ok: "✓", warn: "!", fail: "✗" };
+  const lines = checks.map((c) => `${mark[c.level]} ${c.title}${c.detail ? `  ${c.detail}` : ""}`.split(home).join("~"));
+  return ["<details><summary>zdrop doctor</summary>", "", "```", `${os.type()} ${os.release()} ${process.arch} · TERM_PROGRAM=${process.env.TERM_PROGRAM ?? "?"}`, ...lines, "```", "", "</details>", ""].join("\n");
 };
 
 export const printDoctor = (checks: Check[]): number => {
