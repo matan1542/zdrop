@@ -368,10 +368,10 @@ _zdrop_build_frame() {
   [[ $docs == side ]] && (( _zdrop_w + 1 + _zdrop_docs_w > ${COLUMNS:-80} )) && docs=below
   case $docs in
     side)
-      # as tall as the list, or taller (up to the row limit) for a long description
+      # as tall as its content, up to the list's height or the row limit, whichever is more
       local -i hmax=$(( _zdrop_max_rows > rows ? _zdrop_max_rows : rows ))
       (( hmax > LINES - 4 )) && hmax=$(( LINES - 4 > rows ? LINES - 4 : rows ))
-      _zdrop_panel "$_zdrop_items[_zdrop_sel]" $rows $hmax
+      _zdrop_panel "$_zdrop_items[_zdrop_sel]" 1 $hmax
       local blank=${(l:_zdrop_w:: :)}
       for (( i = 1; i <= ${#_zdrop_panel_lines}; i++ )); do
         # rows below a short list are left blank (no card background)
@@ -423,7 +423,8 @@ _zdrop_draw() {
     zle -R "" "${_zdrop_reserved_rows[@]}"
   fi
 
-  local move=$'\e[B\e['"${col}G"
+  # erase each row whole: a card that moved right (or got narrower) must not leave its old left edge
+  local move=$'\e[B\e[2K\e['"${col}G"
   local buf=$'\e7' row
   for row in "${_zdrop_frame[@]}"; do buf+="$move$row"$'\e[K'; done
   buf+=$'\e[J\e8'

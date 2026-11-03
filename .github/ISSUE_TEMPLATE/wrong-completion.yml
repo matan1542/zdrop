@@ -1,0 +1,36 @@
+name: Wrong or missing completions
+description: A command is completed wrongly, or not at all
+labels: [completions]
+body:
+  - type: input
+    id: line
+    attributes:
+      label: What you typed
+      placeholder: "mytool deploy --"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to see, and what you saw
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: zdrop why <command>
+      description: Paste the output of `zdrop why <command>`. It says whether the completions come from a Fig spec, `--help` or a man page.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: help
+    attributes:
+      label: The relevant part of `<command> --help`
+      description: Only the part that is parsed wrong. Remove anything private.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: zdrop version
+      placeholder: "0.3.0"

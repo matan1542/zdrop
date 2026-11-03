@@ -459,9 +459,21 @@ _zdrop-toggle-description() {
 # --- ghost text: the rest of the selected (or first) suggestion, dimmed after the cursor ---------
 
 # Show $1 as POSTDISPLAY (empty: remove ours, giving zsh-autosuggestions its text back). Widgets only.
+# zle moves highlight offsets as text is typed, so our entry is found by its memo (zsh 5.9+), or on
+# 5.8 by its style at any offsets, never by the offsets it was added with
+typeset -g _zdrop_ghost_memo=""
+autoload -Uz is-at-least
+is-at-least 5.9 && _zdrop_ghost_memo=",memo=zdrop"
+
 _zdrop_ghost_set() {
   [[ $1 == $_zdrop_ghost ]] && return
-  [[ -n $_zdrop_ghost_hl ]] && region_highlight=("${(@)region_highlight:#$_zdrop_ghost_hl}")
+  if [[ -n $_zdrop_ghost_hl ]]; then
+    if [[ -n $_zdrop_ghost_memo ]]; then
+      region_highlight=("${(@)region_highlight:#*memo=zdrop*}")
+    else
+      region_highlight=("${(@)region_highlight:#<-> <-> ${ZDROP_GHOST_STYLE:-fg=8}}")
+    fi
+  fi
   _zdrop_ghost_hl=""
   if [[ -z $1 ]]; then
     [[ -n $_zdrop_ghost ]] && POSTDISPLAY=$_zdrop_ghost_saved
@@ -471,7 +483,7 @@ _zdrop_ghost_set() {
   [[ -z $_zdrop_ghost ]] && _zdrop_ghost_saved=$POSTDISPLAY
   _zdrop_ghost=$1
   POSTDISPLAY=$1
-  _zdrop_ghost_hl="${#BUFFER} $(( ${#BUFFER} + ${#1} )) ${ZDROP_GHOST_STYLE:-fg=8}"
+  _zdrop_ghost_hl="${#BUFFER} $(( ${#BUFFER} + ${#1} )) ${ZDROP_GHOST_STYLE:-fg=8}$_zdrop_ghost_memo"
   region_highlight+=("$_zdrop_ghost_hl")
 }
 

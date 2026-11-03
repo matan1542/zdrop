@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Setup problem?
+    url: https://github.com/matan1542/zdrop#install
+    about: Run `zdrop doctor` first. It checks your setup and says how to fix each problem.

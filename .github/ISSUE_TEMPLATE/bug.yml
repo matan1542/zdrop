@@ -1,0 +1,31 @@
+name: Bug
+description: Something doesn't work, draws wrong, or uses too much memory
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: Steps to reproduce help most. A screenshot or recording is great for drawing problems.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: zdrop doctor --markdown
+      description: Paste the output of `zdrop doctor --markdown` (it hides your home folder).
+      render: markdown
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal
+      placeholder: iTerm2 3.5, Ghostty, VS Code terminal, Terminal.app, ...
+    validations:
+      required: true
+  - type: textarea
+    id: plugins
+    attributes:
+      label: Other zsh plugins and frameworks
+      description: oh-my-zsh, zsh-autosuggestions, fzf-tab, powerlevel10k, vi mode, ... and where the zdrop line is in ~/.zshrc.

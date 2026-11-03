@@ -7,7 +7,11 @@ import type { QueryResult } from "./engine.js";
 //
 // client → daemon
 //   Q US seq US cwd US lbuffer      complete the text before the cursor (last line only)
-//   A US name US value ...          replace the alias table
+//   A US name US value ...          replace this shell's alias table
+//   F US flags US fn ... US "" US builtin ...
+//                                   this shell's function names, then builtins and reserved words;
+//                                   flags: c = zsh's CORRECT option is on (sent with A, and again when
+//                                   the number of aliases or functions changes)
 //   E US PATH US HISTFILE           the shell's environment (sent on connect and when PATH changes);
 //                                   commands are resolved and learned against this PATH
 //   H US line                       a command line the user just ran (ranks suggestions by usage)

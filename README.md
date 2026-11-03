@@ -3,13 +3,7 @@
 Kiro CLI–style dropdown autocomplete for zsh: an IDE-like popup while you type `yarn `, `cd `,
 `git checkout `, … backed by the 700+ open-source [Fig completion specs](https://github.com/withfig/autocomplete).
 
-```
- $ git ch▌
-   › checkout  [branch, file, tag or commit]    checkout [branch, file, tag or com
-   › cherry-pick  commit...                     Switch branches or restore working
-                                                tree files
-                                                command                         ⌃k
-```
+![zdrop: git subcommands and branches, yarn scripts, a CLI learned from its --help, and a typo fix](docs/demo.gif)
 
 - Runs **inside the terminal**: no PTY wrapper, no desktop overlay window, no Accessibility permission.
   Works in Terminal.app, iTerm2 and VS Code / Cursor / Kiro terminals, next to zsh-autosuggestions.
@@ -316,11 +310,15 @@ Measured with `scripts/soak.mjs`, 50,000 keystrokes from 5 simulated shells:
 
 ## Development
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the architecture, the rules every change keeps (no blocking,
+memory budgets, sandboxing) and how to teach the help parser a new format.
+
 ```sh
 yarn build && yarn test     # unit tests: engine fixtures, memory budgets, process limits
 yarn e2e                    # drives a real zsh in a private tmux server
 yarn soak                   # 50k-keystroke memory/latency soak
 yarn budget                 # background-learning resource budget (RSS, probes, freezing while typing)
+yarn setup-test             # zdrop setup / uninstall in Homebrew, installer and source layouts
 scripts/package.sh          # release tarballs (.tar.xz) into release/: bundled Node.js for arm64 and x64, plus the heavy specs
 ```
 

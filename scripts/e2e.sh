@@ -108,6 +108,14 @@ send C-u; text "git status"; send Enter
                           check "Enter runs when the word is already the suggestion" "On branch main"
 send C-u; text "echo e2e-ran"; send Enter
                           check "Enter runs a command with no suggestions" "^e2e-ran"
+# typed one key at a time (as people do), zle shifts highlight offsets: the ghost's dim style must not
+# stay on the text once the suggestion is filled in
+send C-u
+for key in g i t Space c h; do $tmux_ send-keys -t t "$key"; sleep 0.15; done; sleep 0.5
+send Tab; send Tab; send Enter
+if $tmux_ capture-pane -t t -p -e | grep -F '$ git ch' | tail -1 | grep -q "$(printf '\033')\\[90m"; then echo "FAIL a filled-in suggestion is not left dimmed"; failures=$((failures + 1))
+else echo "ok   a filled-in suggestion is not left dimmed"; fi
+
 # aliases, functions and typos
 send C-u; text "g ch";    check "an alias completes like its command" "› checkout"
 send C-u; text "zzhello() { echo hi }"; send Enter
