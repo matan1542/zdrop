@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -93,6 +94,23 @@ describe("help parser: captured help", () => {
     const tar = parse("man-tar.txt", "tar");
     expect(opt(tar.options, "--file")?.names).toEqual(["-f", "--file"]);
     expect(opt(tar.options, "--directory")?.names).toEqual(["-C", "--cd", "--directory"]);
+  });
+});
+
+// the man page this machine renders (BSD mdoc on macOS, GNU groff on Linux), when man is installed
+const localMan = (name: string): string | undefined => {
+  const result = spawnSync("man", ["-P", "cat", name], { encoding: "utf8", env: { ...process.env, MANWIDTH: "100", MANPAGER: "cat" }, timeout: 10_000 });
+  return result.status === 0 && result.stdout.length > 500 ? result.stdout : undefined;
+};
+
+describe("help parser: this machine's man pages", () => {
+  const ls = localMan("ls");
+  it.runIf(ls != null)("parses ls(1) as rendered here", () => {
+    const node = parseHelp(ls!, ["ls"]);
+    expect(looksLikeHelp(node)).toBe(true);
+    expect(node.options.length).toBeGreaterThan(20);
+    expect(opt(node.options, "-l")?.description).toMatch(/long/i);
+    expect(opt(node.options, "-a") ?? opt(node.options, "--all")).toBeDefined();
   });
 });
 

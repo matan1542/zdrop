@@ -39,3 +39,15 @@ jobs:
       - run: yarn setup-test
       - name: End-to-end (zsh in tmux)
         run: yarn e2e
+      - name: Package, install and query the Linux tarball
+        if: runner.os == 'Linux'
+        run: |
+          scripts/package.sh linux-x64
+          version=$(node -p 'require("./package.json").version')
+          home=$(mktemp -d)
+          env -i HOME="$home" PATH=/usr/bin:/bin ZDROP_NO_LOGIN=1 ZDROP_TARBALL="$PWD/release/zdrop-$version-linux-x64.tar.xz" sh release/install.sh
+          grep -q "$home/.zdrop/current/zsh/zdrop.plugin.zsh" "$home/.zshrc"
+          env -i HOME="$home" PATH=/usr/bin:/bin "$home/.zdrop/current/bin/zdrop" query "git ch" | grep -q checkout
+          env -i HOME="$home" PATH=/usr/bin:/bin "$home/.zdrop/current/bin/zdrop" doctor --markdown
+          # the login item without a systemd user session: a note, not a failure
+          env -i HOME="$home" PATH=/usr/bin:/bin ZDROP_NO_RC=1 "$home/.zdrop/current/bin/zdrop" setup
