@@ -10,7 +10,7 @@
 [[ -o interactive && ${ZDROP_DISABLE:-0} != 1 ]] || return 0
 zmodload zsh/net/socket 2>/dev/null || return 0
 zmodload -F zsh/datetime p:EPOCHREALTIME 2>/dev/null || return 0
-zmodload -F zsh/parameter p:aliases 2>/dev/null
+zmodload -F zsh/parameter p:aliases p:functions p:builtins p:reswords 2>/dev/null
 autoload -Uz add-zle-hook-widget add-zsh-hook
 typeset -g _zdrop_loaded=1
 
@@ -23,6 +23,7 @@ typeset -g _zdrop_sock="${ZDROP_HOME:-$HOME/.cache/zdrop}/zdrop.sock"
 typeset -gi _zdrop_fd=0 _zdrop_idle_fd=0 _zdrop_seq=0
 typeset -gF _zdrop_started_at=0
 typeset -g  _zdrop_sent_path=""           # PATH last sent to the daemon (commands are learned against it)
+typeset -g  _zdrop_sent_names=""          # alias/function counts last sent (re-sent when they change)
 typeset -g  _zdrop_ghost="" _zdrop_ghost_hl="" _zdrop_ghost_saved=""  # inline preview after the cursor
 typeset -gi _zdrop_dirty=0                # the next idle repaint must draw (a new result arrived)
 typeset -g  _zdrop_notice=""              # an update notice from the daemon, shown in one popup per shell
@@ -59,9 +60,18 @@ _zdrop_connect() {
   fi
   _zdrop_fd=$REPLY
   zle -F -w $_zdrop_fd _zdrop-on-msg
+  _zdrop_send_names || return 1
+  _zdrop_send_env
+}
+
+# this shell's aliases, functions and builtins: commands the daemon can't find on PATH
+_zdrop_send_names() {
+  local REPLY
+  _zdrop_sent_names="$#aliases:$#functions"
   _zdrop_alias_line
   _zdrop_write "$REPLY" || return 1
-  _zdrop_send_env
+  _zdrop_names_line
+  _zdrop_write "$REPLY"
 }
 
 # the daemon is shared, so it resolves and learns commands against each shell's own PATH
@@ -97,6 +107,15 @@ _zdrop_alias_line() {
   local k
   for k in ${(k)aliases}; do kv+=("$k" "${aliases[$k]//[$'\n\x1e\x1f']/ }"); done
   REPLY="A$_zdrop_US${(pj:$_zdrop_US:)kv}"
+}
+
+# REPLY = an `F` message: flags (c: zsh's CORRECT is on), function names, "", builtins and reserved words.
+# Helpers that only plugins and prompts call are left out.
+_zdrop_names_line() {
+  local -a fns=(${(k)functions:#(_*|.*|+*|-*|zdrop*|prompt_*|*prompt_info|omz_*|*-widget|zle-*|TRAP*|precmd|preexec|chpwd|periodic|zshaddhistory|zshexit|add-zsh-hook|add-zle-hook-widget|compinit|compdef|compaudit|promptinit|bashcompinit)})
+  local flags=""
+  [[ -o correct ]] && flags+=c
+  REPLY="F$_zdrop_US$flags$_zdrop_US${(pj:$_zdrop_US:)${fns[1,2000]}}$_zdrop_US$_zdrop_US${(pj:$_zdrop_US:)${(k)builtins}}$_zdrop_US${(pj:$_zdrop_US:)reswords}"
 }
 
 # --- replies ------------------------------------------------------------------------------------
@@ -174,6 +193,7 @@ _zdrop_line_init() {
   _zdrop_measure_prompt
   _zdrop_connect || return
   [[ $PATH == $_zdrop_sent_path ]] || _zdrop_send_env
+  [[ "$#aliases:$#functions" == $_zdrop_sent_names ]] || _zdrop_send_names
   local dir
   for dir in $_zdrop_visited; do _zdrop_write "D$_zdrop_US$dir"; done
   _zdrop_visited=()
@@ -319,7 +339,9 @@ _zdrop_insert() {
 # complete, or for a fuzzy match -- it runs the line as typed.
 _zdrop-accept() {
   _zdrop_active || { _zdrop_fallback; return }
-  if (( ! _zdrop_navigated )); then
+  _zdrop_field $_zdrop_sel 7
+  # a "did you mean" row: running the line as typed would only fail, so Enter fixes it first
+  if (( ! _zdrop_navigated )) && [[ $REPLY != typo ]]; then
     _zdrop_extension
     if [[ -z $REPLY ]]; then
       _zdrop_hide

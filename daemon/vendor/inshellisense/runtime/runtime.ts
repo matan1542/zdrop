@@ -6,7 +6,7 @@ import { getArgDrivenRecommendation, getSubcommandDrivenRecommendation, Suggesti
 import { Suggestion, SuggestionBlob } from "./model.js";
 import { buildExecuteShellCommand, resolveCwd } from "./utils.js";
 import { Shell } from "../utils/shell.js";
-import { aliasExpand, getAliasNames } from "./alias.js";
+import { aliasExpand, aliasText, getAliasNames, getFunctionNames } from "./alias.js";
 import { endTiming, startTiming } from "../utils/performance.js";
 import { clearImplicitGeneratorState } from "./generatorCache.js";
 
@@ -384,6 +384,8 @@ const runSubcommand = async (
 const runCommand = async (token: CommandToken): Promise<SuggestionBlob | undefined> => {
   const specs = prefixMatches(getSpecNames(), token.token);
   const aliases = prefixMatches(getAliasNames(), token.token);
+  // zdrop: functions are commands too; aliases show what they stand for and rank by use, not pinned
+  const functions = prefixMatches(getFunctionNames(), token.token);
   return {
     suggestions: [
       ...aliases.map(
@@ -393,7 +395,19 @@ const runCommand = async (token: CommandToken): Promise<SuggestionBlob | undefin
             type: "shortcut",
             allNames: [alias],
             icon: SuggestionIcons.Shortcut,
-            priority: 100,
+            priority: 50,
+            description: `→ ${aliasText(alias) ?? ""}`,
+          }) as Suggestion,
+      ),
+      ...functions.map(
+        (fn) =>
+          ({
+            name: fn,
+            type: "shortcut",
+            allNames: [fn],
+            icon: "function",
+            priority: 45,
+            description: "shell function",
           }) as Suggestion,
       ),
       ...specs.map(

@@ -7,6 +7,7 @@ import { aliasExpand } from "../vendor/inshellisense/runtime/alias.js";
 import { parseCommand, type CommandToken } from "../vendor/inshellisense/runtime/parser.js";
 import { Shell } from "../vendor/inshellisense/utils/shell.js";
 import { dirs, tildify } from "./rank/dirs.js";
+import { findTypo } from "./rank/typo.js";
 import { usage } from "./rank/usage.js";
 
 export const maxItems = 50;
@@ -78,12 +79,21 @@ const commonPrefix = (names: string[]): string => {
 };
 
 /** What the line looks like around the cursor, for ranking by usage and directory frecency. */
-type LineContext = { before: string[]; active?: CommandToken; cwd: string };
+type LineContext = { line: string; before: string[]; active?: CommandToken; cwd: string };
 
 const lineContext = (lbuffer: string, cwd: string): LineContext => {
   const tokens = aliasExpand(parseCommand(lbuffer, Shell.Zsh));
   const active = tokens.at(-1)?.complete === false ? tokens.at(-1) : undefined;
-  return { before: (active ? tokens.slice(0, -1) : tokens).map((t) => t.token), active, cwd };
+  return { line: lbuffer, before: (active ? tokens.slice(0, -1) : tokens).map((t) => t.token), active, cwd };
+};
+
+/** `gti status` → one row that replaces the whole line with `git status`. */
+const typoResult = (ctx: LineContext, pending: string[]): QueryResult | undefined => {
+  const typo = findTypo(ctx.line, ctx.cwd);
+  if (typo == null) return;
+  const fixed = ctx.line.slice(0, typo.start) + typo.fix + ctx.line.slice(typo.start + typo.word.length);
+  const item: Item = { icon: "typo", name: typo.fix, insert: fixed, description: `did you mean: ${fixed.trim()}`, args: "", matchIndices: [], type: "typo" };
+  return { items: [item], replaceLen: ctx.line.length, commonPrefix: "", argHint: "", pending };
 };
 
 const escapeZsh = (value: string): string => value.replace(zshSpecial, "\\$1");
@@ -163,6 +173,10 @@ const toResult = (blob: SuggestionBlob | undefined, pending: string[], ctx: Line
   const ranked = rankItems([...specItems, ...history], [...priorities, ...history.map(() => 50)], ctx, term);
   const frecent = dirItems(ranked, ctx, term);
   const items = [...frecent.first, ...ranked, ...frecent.last].slice(0, maxItems);
+  if (items.length === 0) {
+    const typo = typoResult(ctx, pending);
+    if (typo != null) return typo;
+  }
   if (items.length === 0 && blob == null) return { items: [], replaceLen: 0, commonPrefix: "", argHint: "", pending };
 
   const prefix = commonPrefix(items.map((item) => item.name));

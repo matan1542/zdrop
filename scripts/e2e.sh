@@ -33,6 +33,7 @@ chmod +x "$work/fakebin/fakecli"
 cat >"$work/zdot/.zshrc" <<EOF
 PS1='\$ '
 PATH="$work/fakebin:\$PATH"
+alias g=git
 ${1:+source $1}
 source "$root/zsh/zdrop.plugin.zsh"
 cd "$app"
@@ -107,6 +108,14 @@ send C-u; text "git status"; send Enter
                           check "Enter runs when the word is already the suggestion" "On branch main"
 send C-u; text "echo e2e-ran"; send Enter
                           check "Enter runs a command with no suggestions" "^e2e-ran"
+# aliases, functions and typos
+send C-u; text "g ch";    check "an alias completes like its command" "› checkout"
+send C-u; text "zzhello() { echo hi }"; send Enter
+text "zzhe";              check "a function defined in the session is offered" "zzhello"
+send C-u; text "gti status "
+                          check "a mistyped command offers a fix" "did you mean: git status"
+send Enter;               check "Enter applies the fix instead of running" '^\$ git status *$'
+send C-u
 
 [ $failures = 0 ] && echo "all e2e checks passed" || echo "$failures e2e check(s) failed"
 exit $failures

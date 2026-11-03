@@ -3,7 +3,7 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import log from "../vendor/inshellisense/utils/log.js";
-import { setAliases } from "../vendor/inshellisense/runtime/alias.js";
+import { ShellNames, shellNames } from "../vendor/inshellisense/runtime/alias.js";
 import { clearImplicitGeneratorState, getGeneratorCacheStats } from "../vendor/inshellisense/runtime/generatorCache.js";
 import { runQuery } from "./engine.js";
 import { childSlots, killAllChildren, limits, liveChildren } from "./limits.js";
@@ -18,7 +18,14 @@ import { usage } from "./rank/usage.js";
 
 const progressIntervalMs = 100;
 
-type Session = { controller?: AbortController; progress?: NodeJS.Timeout; prefetch?: NodeJS.Timeout; env?: ShellEnv };
+type Session = {
+  controller?: AbortController;
+  progress?: NodeJS.Timeout;
+  prefetch?: NodeJS.Timeout;
+  env?: ShellEnv;
+  /** this shell's aliases, functions, builtins and options */
+  names: ShellNames;
+};
 
 const mb = (bytes: number) => +(bytes / 1048576).toFixed(1);
 
@@ -119,11 +126,11 @@ export const serve = async (): Promise<void> => {
     builder.onQuery();
     if (learner != null) {
       // once typing pauses, learn what the user is most likely about to need
-      session.prefetch = setTimeout(() => requestEnv.run(env, () => learner.prefetch(lbuffer)), learnConfig.prefetchDebounceMs);
+      session.prefetch = setTimeout(() => shellNames.run(session.names, () => requestEnv.run(env, () => learner.prefetch(lbuffer))), learnConfig.prefetchDebounceMs);
       session.prefetch.unref();
     }
 
-    void requestEnv.run(env, () => runQuery(
+    void shellNames.run(session.names, () => requestEnv.run(env, () => runQuery(
       lbuffer,
       cwd,
       (result) => {
@@ -139,7 +146,7 @@ export const serve = async (): Promise<void> => {
         }
       },
       signal,
-    ))
+    )))
       .catch((e) => {
         if (!isAbort(e)) log.debug({ msg: "query failed", e: (e as Error).message, lbuffer });
       })
@@ -157,17 +164,24 @@ export const serve = async (): Promise<void> => {
       case "A": {
         const aliases: Record<string, string> = {};
         for (let i = 0; i + 1 < fields.length; i += 2) aliases[fields[i]] = fields[i + 1];
-        setAliases(aliases);
+        session.names.setAliases(aliases);
+        break;
+      }
+      case "F": {
+        // flags, function names, "", builtin and reserved-word names
+        const split = fields.indexOf("", 1);
+        const functions = fields.slice(1, split === -1 ? undefined : split);
+        session.names.setFunctions(functions, split === -1 ? [] : fields.slice(split + 1), (fields[0] ?? "").includes("c"));
         break;
       }
       case "E": {
         session.env = { path: fields[0] || process.env.PATH || "/usr/bin:/bin", histfile: fields[1] || undefined };
         builder.setEnv(session.env);
-        void usage.loadHistory(session.env.histfile).catch(() => undefined);
+        void shellNames.run(session.names, () => usage.loadHistory(session.env?.histfile)).catch(() => undefined);
         break;
       }
       case "H":
-        usage.record(fields.join(US));
+        shellNames.run(session.names, () => usage.record(fields.join(US)));
         break;
       case "D":
         if (fields[0]) dirs.visit(fields[0]);
@@ -185,7 +199,7 @@ export const serve = async (): Promise<void> => {
   };
 
   const server = net.createServer((socket) => {
-    const session: Session = {};
+    const session: Session = { names: new ShellNames() };
     sessions.add(socket);
     armIdleTimer();
     let buffered = "";

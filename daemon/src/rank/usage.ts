@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import readline from "node:readline";
+import fuzzysort from "fuzzysort";
 import { aliasExpand } from "../../vendor/inshellisense/runtime/alias.js";
 
 // What the user actually runs, for ranking. Every executed command line is reduced to "context →
@@ -108,13 +109,13 @@ export class UsageIndex {
         const word = words[i];
         if (word.length > 120) continue;
         if (valueOf != null) {
-          if (!word.startsWith("-") && !sensitive.test(valueOf)) this.bump(`${context}\x1f${valueOf}`, word, weight);
+          if (!word.startsWith("-") && !sensitive.test(valueOf)) this.bumpValue(context, valueOf, word, weight);
           continue;
         }
         const eq = /^(--?[\w-]+)=(.+)$/.exec(word);
         if (eq) {
           this.bump(context, eq[1], weight);
-          if (!sensitive.test(eq[1])) this.bump(`${context}\x1f${eq[1]}`, eq[2], weight);
+          if (!sensitive.test(eq[1])) this.bumpValue(context, eq[1], eq[2], weight);
           continue;
         }
         this.bump(context, word, weight);
@@ -173,22 +174,46 @@ export class UsageIndex {
     return this.contexts.get(key)?.get(child) ?? 0;
   }
 
-  /** Values used after `before` before (flag values, or positional words), best first. */
-  values(before: string[], prefix: string, limit: number): UsageHit[] {
+  /**
+   * Values used after `before` before (flag values, or positional words), best first: prefix matches,
+   * then fuzzy ones (`prd` → `production`). A flag's values used with any subcommand of the same
+   * command come after the ones used in this exact context.
+   */
+  values(before: string[], typed: string, limit: number): UsageHit[] {
     const { context, valueOf } = contextOf(before);
-    const key = valueOf != null ? `${context}\x1f${valueOf}` : context;
-    const children = this.contexts.get(key);
-    if (children == null) return [];
-    const hits: UsageHit[] = [];
-    for (const [name, score] of children) {
-      if (name.startsWith("-") || !name.startsWith(prefix) || name === prefix) continue;
-      hits.push({ name, score, count: Math.max(1, Math.floor(score)) });
+    const keys = [valueOf != null ? `${context}\x1f${valueOf}` : context];
+    const root = context.split(" ")[0];
+    if (valueOf != null && root !== context) keys.push(`${root}\x1f${valueOf}`);
+    const prefixed: UsageHit[] = [];
+    const others: UsageHit[] = [];
+    const seen = new Set<string>();
+    for (const key of keys) {
+      const children = this.contexts.get(key);
+      if (children == null) continue;
+      const fromKey: UsageHit[] = [];
+      for (const [name, score] of children) {
+        if (name.startsWith("-") || name === typed || seen.has(name)) continue;
+        seen.add(name);
+        (name.startsWith(typed) ? fromKey : others).push({ name, score, count: Math.max(1, Math.floor(score)) });
+      }
+      prefixed.push(...fromKey.sort((a, b) => b.score - a.score));
     }
-    return hits.sort((a, b) => b.score - a.score).slice(0, limit);
+    if (prefixed.length >= limit || typed === "") return prefixed.slice(0, limit);
+    const fuzzy = fuzzysort
+      .go(typed, others, { key: "name", limit: limit - prefixed.length, threshold: 0.3 })
+      .map((r) => r.obj);
+    return [...prefixed, ...fuzzy];
   }
 
   stats() {
     return { contexts: this.contexts.size, children: this.children, files: this.loadedFiles.size };
+  }
+
+  /** a flag's value, under its context and under the command alone (shared by its subcommands) */
+  private bumpValue(context: string, flag: string, value: string, weight: number) {
+    this.bump(`${context}\x1f${flag}`, value, weight);
+    const root = context.split(" ")[0];
+    if (root !== context) this.bump(`${root}\x1f${flag}`, value, weight);
   }
 
   private bump(context: string, child: string, weight: number) {

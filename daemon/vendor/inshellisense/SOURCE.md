@@ -15,7 +15,10 @@
 - `generatorCache.ts`: total-suggestion budget, per-generator cap, TTL for implicit entries, and a
   "fast" mode that reports pending generators instead of awaiting them (used for loading states).
 - `suggestion.ts`: icons are semantic keys (rendered by zsh), fuzzy filtering uses fuzzysort.
-- `alias.ts`: aliases are set by the client instead of spawning `zsh -i -c alias`.
+- `alias.ts`: aliases are set by the client instead of spawning `zsh -i -c alias`; each shell has its
+  own table (an `AsyncLocalStorage`), nested aliases expand, and functions/builtins are known names.
+- `runtime.ts` (first word): shell functions are suggested, and aliases show their expansion and rank
+  by use instead of being pinned (priority 100).
 - `runtime.ts` (learning): `SpecProvider.describe` gives first-word suggestions a description, and a
   string `loadSpec` that resolves to nothing (still being learned) no longer clears `loadSpec`.
 - `utils.ts` (learning): the child runner is exported as `runProcess` with a caller-supplied

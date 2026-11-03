@@ -41,6 +41,18 @@ describe("usage index", () => {
     expect(index.values(["login", "--password"], "", 5)).toEqual([]);
   });
 
+  it("shares a flag's values across subcommands and matches values fuzzily", () => {
+    const index = new UsageIndex();
+    index.record("kubectl get pods -n production");
+    index.record("kubectl get pods -n production");
+    index.record("kubectl describe svc -n monitoring");
+    // used with `get pods` first, then with any other kubectl subcommand
+    expect(index.values(["kubectl", "logs", "-n"], "", 5).map((h) => h.name)).toEqual(["production", "monitoring"]);
+    expect(index.values(["kubectl", "describe", "svc", "-n"], "", 5).map((h) => h.name)).toEqual(["monitoring", "production"]);
+    expect(index.values(["kubectl", "logs", "-n"], "prd", 5).map((h) => h.name)).toEqual(["production"]);
+    expect(index.values(["kubectl", "logs", "-n"], "xyz", 5)).toEqual([]);
+  });
+
   it("splits chained commands and stays within its caps", () => {
     const index = new UsageIndex();
     index.record("yarn build && git push | cat");

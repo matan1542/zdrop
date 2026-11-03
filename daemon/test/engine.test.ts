@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
+import { ShellNames, shellNames } from "../vendor/inshellisense/runtime/alias.js";
+import { editDistance } from "../src/rank/typo.js";
 import { initRuntime } from "../src/setup.js";
 import { git, names, query, tempDir, writeJson } from "./helpers.js";
 
@@ -80,5 +82,73 @@ describe("no run-as-typed rows", () => {
       const result = await query(line, tempDir("exact"));
       expect(result.items.some((item) => item.type === "auto-execute")).toBe(false);
     }
+  });
+});
+
+describe("aliases and functions", () => {
+  const shell = (aliases: Record<string, string>, functions: string[] = []) => {
+    const names = new ShellNames();
+    names.setAliases(aliases);
+    names.setFunctions(functions, ["echo", "if"]);
+    return names;
+  };
+
+  it("completes through nested aliases and shows what an alias stands for", async () => {
+    const names = shell({ g: "git", gco: "g checkout", ls: "ls -G" });
+    const result = await shellNames.run(names, () => query("g ch", "/"));
+    expect(result.items.map((i) => i.name)).toContain("checkout");
+    const nested = await shellNames.run(names, () => query("gco -", "/"));
+    expect(nested.items.length).toBeGreaterThan(0);
+    // a self-referencing alias expands once instead of looping
+    const self = await shellNames.run(names, () => query("ls -", "/"));
+    expect(self.items.length).toBeGreaterThan(0);
+    const first = await shellNames.run(names, () => query("gc", "/"));
+    expect(first.items.find((i) => i.name === "gco")).toMatchObject({ description: "→ g checkout", icon: "shortcut" });
+  });
+
+  it("keeps each shell's names apart and suggests functions as commands", async () => {
+    const a = shell({ zz: "git" }, ["zzdeploy"]);
+    const b = shell({});
+    const inA = await shellNames.run(a, () => query("zz", "/"));
+    expect(inA.items.map((i) => i.name)).toEqual(expect.arrayContaining(["zz", "zzdeploy"]));
+    expect(inA.items.find((i) => i.name === "zzdeploy")).toMatchObject({ icon: "function", description: "shell function" });
+    const inB = await shellNames.run(b, () => query("zz", "/"));
+    expect(inB.items.map((i) => i.name)).not.toContain("zzdeploy");
+    expect(a.knows("echo") && a.knows("if") && a.knows("zz") && !b.knows("zz")).toBe(true);
+  });
+});
+
+describe("typo fix", () => {
+  it("offers the closest command for an unknown command word, as a whole-line replacement", async () => {
+    const result = await query("gti status ", "/");
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ name: "git", insert: "git status ", type: "typo", icon: "typo" });
+    expect(result.replaceLen).toBe("gti status ".length);
+    const chained = await query("cd /tmp && FOO=1 yran build", "/");
+    expect(chained.items[0]?.insert).toBe("cd /tmp && FOO=1 yarn build");
+  });
+
+  it("leaves known commands, paths, unfinished words and far-off words alone", async () => {
+    for (const line of ["git status ", "./gti x", "gti", "qqqqqqzz x", "x"]) {
+      const result = await query(line, "/");
+      expect(result.items.filter((i) => i.type === "typo"), line).toEqual([]);
+    }
+    // a shell's own alias or function is a command
+    const names = new ShellNames();
+    names.setAliases({ gti: "git" });
+    const aliased = await shellNames.run(names, () => query("gti status ", "/"));
+    expect(aliased.items.filter((i) => i.type === "typo")).toEqual([]);
+    // zsh's CORRECT option does it instead
+    const correcting = new ShellNames();
+    correcting.setFunctions([], [], true);
+    const corrected = await shellNames.run(correcting, () => query("gti status ", "/"));
+    expect(corrected.items.filter((i) => i.type === "typo")).toEqual([]);
+  });
+
+  it("counts a swap of neighbouring letters as one edit", () => {
+    expect(editDistance("gti", "git", 1)).toBe(1);
+    expect(editDistance("yran", "yarn", 1)).toBe(1);
+    expect(editDistance("dokcer", "docker", 2)).toBe(1);
+    expect(editDistance("abc", "xyz", 1)).toBe(2);
   });
 });
