@@ -88,11 +88,11 @@ _zdrop_connect() {
 }
 
 # While the daemon starts (a cold start, or a restart for new settings), poll for it every 0.2s for
-# up to 3s from a zle fd handler, then send the query for what is typed: no extra keystroke needed.
+# up to 8s from a zle fd handler, then send the query for what is typed: no extra keystroke needed.
 # The timer is a forked `sleep`, only ever while the daemon is down.
 typeset -gi _zdrop_retry_fd=0 _zdrop_retries=0
 _zdrop_arm_retry() {
-  (( _zdrop_retry_fd || _zdrop_retries >= 15 )) && return 0
+  (( _zdrop_retry_fd || _zdrop_retries >= 40 )) && return 0
   (( _zdrop_retries++ ))
   exec {_zdrop_retry_fd}< <(sleep 0.2; print)
   zle -F -w $_zdrop_retry_fd _zdrop-retry

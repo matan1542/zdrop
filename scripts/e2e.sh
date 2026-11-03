@@ -46,6 +46,8 @@ sleep 1.5
 send() { $tmux_ send-keys -t t "$@"; sleep 0.5; }
 text() { $tmux_ send-keys -t t -l "$1"; sleep 0.6; }
 screen() { $tmux_ capture-pane -t t -p; }
+# wait_for <grep -E pattern> <seconds>: until the pattern is on screen (for slow cold starts)
+wait_for() { i=0; while [ $i -lt $(( $2 * 5 )) ] && ! screen | grep -Eq -- "$1"; do sleep 0.2; i=$((i + 1)); done; }
 check() { # check <description> <grep -E pattern> [absent]
   if screen | grep -Eq -- "$2"; then found=1; else found=0; fi
   if [ "${3:-}" = absent ]; then found=$((1 - found)); fi
@@ -145,7 +147,8 @@ send C-u; text "cd ";     check "folders are listed after the restart" "▸ d"
                           check "the config file sets the number of rows" "▸ src" absent
 # a cold start answers without another keystroke
 send C-u; ZDROP_HOME="$work/home" "$root/bin/zdrop" stop >/dev/null 2>&1; sleep 0.3
-text "git ch"; sleep 2;   check "the first keystrokes after a cold start get a popup" "› c[a-z-]+ "
+text "git ch"; wait_for "› c[a-z-]+ " 8
+                          check "the first keystrokes after a cold start get a popup" "› c[a-z-]+ "
 send C-u
 
 [ $failures = 0 ] && echo "all e2e checks passed" || echo "$failures e2e check(s) failed"

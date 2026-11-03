@@ -21,7 +21,8 @@ export const request = (message: string, timeoutMs = 2000): Promise<string> =>
         resolve(reply.slice(0, newline));
       }
     });
-    socket.once("error", (e) => {
+    // `on`, not `once`: a daemon going away can raise a second error (EPIPE after ECONNRESET)
+    socket.on("error", (e) => {
       clearTimeout(timer);
       reject(new Error(`daemon not running (${(e as NodeJS.ErrnoException).code ?? e.message})`));
     });
